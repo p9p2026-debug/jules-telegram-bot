@@ -10,6 +10,7 @@ from google import genai
 from google.genai import types
 import config
 from database.repositories import SessionRepository, SettingsRepository, UserRepository
+from services.jules_api_client import JulesApiClient, JulesApiException
 
 logger = logging.getLogger(__name__)
 
@@ -67,7 +68,17 @@ class JulesService:
                 "• أو يرجى من مدير البوت تعيين المفتاح الرئيسي عبر المتغيرات البيئية أو لوحة الأدمن."
             )
 
-        # Retrieve user model preference
+        # Route directly to official Google Jules REST API (AQ. key or Jules key)
+        if api_key.startswith("AQ.") or not api_key.startswith("AIza"):
+            return await cls._generate_with_jules_api(
+                user_id=user_id,
+                session_id=session_id,
+                user_prompt=user_prompt,
+                api_key=api_key,
+                file_name=file_name
+            )
+
+        # Retrieve user model preference (for Gemini fallback)
         user = await UserRepository.get_by_id(user_id)
         model_choice = user.get("selected_model", "flash") if user else "flash"
         model_id = cls.resolve_model_id(model_choice)
@@ -161,6 +172,95 @@ class JulesService:
                     )
                 return "❌ **خطأ في الصلاحيات (403):** مفتاح الـ API لا يملك صلاحية استخدام هذا النموذج."
             return f"❌ **حدث خطأ فني أثناء معالجة الطلب.** يرجى المحاولة مرة أخرى أو مراجعة المشرف."
+
+    @classmethod
+    async def _generate_with_jules_api(
+        cls,
+        user_id: int,
+        session_id: str,
+        user_prompt: str,
+        api_key: str,
+        file_name: Optional[str] = None
+    ) -> str:
+        """
+        Executes a conversation or coding turn directly against official Google Jules REST API (jules.googleapis.com).
+        Uses continuous sessions and polls agent activities.
+        """
+        saved_user_text = user_prompt or f"[{file_name or 'مرفق'}]"
+        await SessionRepository.add_message(
+            session_id=session_id,
+            role="user",
+            content=saved_user_text
+        )
+
+        try:
+            jules_session_name = await SettingsRepository.get_setting(f"jules_sess:{session_id}", "")
+            active_source = await SettingsRepository.get_setting(f"user_source:{user_id}", "")
+
+            if not jules_session_name:
+                if active_source:
+                    session_data = await JulesApiClient.create_session(
+                        source=active_source,
+                        prompt=user_prompt,
+                        api_key=api_key
+                    )
+                else:
+                    session_data = await JulesApiClient.create_chat_session(
+                        prompt=user_prompt,
+                        api_key=api_key
+                    )
+                jules_session_name = session_data.get("name", "")
+                if jules_session_name:
+                    await SettingsRepository.set_setting(f"jules_sess:{session_id}", jules_session_name)
+                baseline_count = 0
+            else:
+                try:
+                    existing_acts = await JulesApiClient.list_activities(jules_session_name, api_key=api_key)
+                    baseline_count = len(existing_acts)
+                except Exception:
+                    baseline_count = 0
+
+                try:
+                    await JulesApiClient.send_message(jules_session_name, user_prompt, api_key=api_key)
+                except Exception as exc:
+                    logger.warning("Failed sending message to existing session %s, creating new: %s", jules_session_name, exc)
+                    if active_source:
+                        session_data = await JulesApiClient.create_session(
+                            source=active_source,
+                            prompt=user_prompt,
+                            api_key=api_key
+                        )
+                    else:
+                        session_data = await JulesApiClient.create_chat_session(
+                            prompt=user_prompt,
+                            api_key=api_key
+                        )
+                    jules_session_name = session_data.get("name", "")
+                    if jules_session_name:
+                        await SettingsRepository.set_setting(f"jules_sess:{session_id}", jules_session_name)
+                    baseline_count = 0
+
+            assistant_reply = await JulesApiClient.wait_for_agent_reply(
+                session_name=jules_session_name,
+                baseline_count=baseline_count,
+                timeout_seconds=45,
+                api_key=api_key
+            )
+
+            await SessionRepository.add_message(
+                session_id=session_id,
+                role="model",
+                content=assistant_reply
+            )
+
+            return assistant_reply
+
+        except JulesApiException as j_err:
+            logger.exception("Jules API error: %s", j_err)
+            return f"❌ **خطأ في Jules API:**\n`{str(j_err)}`"
+        except Exception as exc:
+            logger.exception("Jules execution error: %s", exc)
+            return f"❌ **حدث خطأ أثناء معالجة الطلب عبر Jules:**\n`{str(exc)}`"
 
 
 def html_escape(text: str) -> str:

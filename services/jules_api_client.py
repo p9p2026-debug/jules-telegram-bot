@@ -136,6 +136,75 @@ class JulesApiClient:
         return res.get("activities", [])
 
     @classmethod
+    async def create_chat_session(
+        cls,
+        prompt: str,
+        title: Optional[str] = None,
+        api_key: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Creates a direct conversation/task session on Jules without an external repository context.
+        Endpoint: POST /v1alpha/sessions
+        """
+        payload: Dict[str, Any] = {"prompt": prompt}
+        if title:
+            payload["title"] = title[:100]
+        return await asyncio.to_thread(cls._execute_request, "sessions", "POST", payload, api_key)
+
+    @classmethod
+    async def wait_for_agent_reply(
+        cls,
+        session_name: str,
+        baseline_count: int = 0,
+        timeout_seconds: int = 40,
+        api_key: Optional[str] = None
+    ) -> str:
+        """
+        Polls activities of a Jules session until a new agent response is produced.
+        """
+        clean_name = session_name if session_name.startswith("sessions/") else f"sessions/{session_name}"
+        loop = asyncio.get_event_loop()
+        start_time = loop.time()
+
+        while loop.time() - start_time < timeout_seconds:
+            await asyncio.sleep(2.5)
+            try:
+                activities = await cls.list_activities(clean_name, api_key=api_key)
+            except Exception as exc:
+                logger.warning("Error fetching activities for %s: %s", clean_name, exc)
+                continue
+
+            if len(activities) > baseline_count:
+                new_acts = activities[baseline_count:]
+                for act in reversed(new_acts):
+                    if act.get("originator") == "agent":
+                        if "agentMessaged" in act:
+                            msg = act["agentMessaged"].get("agentMessage")
+                            if msg:
+                                return msg
+                        elif "progressUpdated" in act:
+                            prog = act["progressUpdated"]
+                            desc = prog.get("description") or prog.get("title")
+                            if desc:
+                                return desc
+                        elif "sessionCompleted" in act:
+                            return "✅ اكتملت المهمة بنجاح بواسطة Jules."
+
+            try:
+                session_data = await cls.get_session(clean_name, api_key=api_key)
+                if session_data.get("state") in ["COMPLETED", "SUCCEEDED"]:
+                    outputs = session_data.get("outputs", [])
+                    if outputs and isinstance(outputs, list):
+                        for item in outputs:
+                            if isinstance(item, dict) and "pullRequest" in item:
+                                pr_url = item["pullRequest"].get("url")
+                                return f"✅ اكتملت المهمة بنجاح!\n🔗 رابط الـ Pull Request: {pr_url}"
+            except Exception:
+                pass
+
+        return "⏳ استغرق Jules وقتاً أطول من المعتاد في الاستجابة. يمكنك إعادة إرسال طلبك أو التحقق عبر <code>/tasks</code>."
+
+    @classmethod
     async def send_message(
         cls,
         session_name: str,

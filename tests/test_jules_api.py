@@ -59,6 +59,17 @@ class TestJulesApiClient(unittest.TestCase):
         self.assertEqual(len(result["sources"]), 1)
         self.assertEqual(result["sources"][0]["name"], "sources/github-test-repo")
 
+    @patch("services.jules_api_client.urllib.request.urlopen")
+    def test_create_chat_session(self, mock_urlopen):
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = b'{"name": "sessions/12345", "prompt": "test prompt"}'
+        mock_urlopen.return_value.__enter__.return_value = mock_resp
+
+        result = JulesApiClient._execute_request("sessions", "POST", {"prompt": "test prompt"}, api_key="dummy_test_key")
+        self.assertIn("name", result)
+        self.assertEqual(result["name"], "sessions/12345")
+        self.assertEqual(result["prompt"], "test prompt")
+
     def test_missing_api_key_raises_exception(self):
         with patch.object(config, "JULES_API_KEY", ""):
             with self.assertRaises(JulesApiException) as ctx:
