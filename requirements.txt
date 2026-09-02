@@ -1,0 +1,7 @@
+python-telegram-bot==22.7
+google-genai==1.75.0
+python-dotenv==1.2.2
+aiohttp==3.11.14
+pydantic==2.13.2
+Pillow==10.4.0
+pypdf==6.10.2

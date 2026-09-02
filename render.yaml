@@ -1,0 +1,48 @@
+# ====================================================================
+# Render Blueprint Specification (render.yaml)
+# Allows One-Click Deployment on Render (https://render.com)
+# ====================================================================
+
+services:
+  # Option A: Web Service (Compatible with Render's 100% Free Plan)
+  # Uses the internal HTTP health check server listening on /health
+  - type: web
+    name: jules-telegram-bot
+    env: python
+    region: frankfurt # You can change to oregon, ohio, singapore, etc.
+    plan: free
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    startCommand: python main.py
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: BOT_TOKEN
+        sync: false # Prompts user during 1-click deployment
+      - key: ADMIN_IDS
+        sync: false # Comma-separated Telegram User IDs (e.g. 12345678,87654321)
+      - key: GEMINI_API_KEY
+        sync: false # Google Gemini API key from AI Studio
+      - key: MODEL_PRO_ID
+        value: gemini-2.5-pro
+      - key: MODEL_FLASH_ID
+        value: gemini-2.5-flash
+      - key: DATABASE_PATH
+        value: data/jules_bot.db
+      - key: PORT
+        value: 10000
+
+  # Option B: Background Worker (Alternative for paid plans without web port)
+  # Uncomment if deploying as a dedicated Background Worker
+  # - type: worker
+  #   name: jules-telegram-worker
+  #   env: python
+  #   plan: starter
+  #   buildCommand: pip install -r requirements.txt
+  #   startCommand: python main.py
+  #   envVars:
+  #     - key: BOT_TOKEN
+  #       sync: false
+  #     - key: ADMIN_IDS
+  #       sync: false
+  #     - key: GEMINI_API_KEY
+  #       sync: false
