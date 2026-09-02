@@ -73,25 +73,46 @@ class JulesService:
 
     @staticmethod
     def resolve_model_id(model_choice: str) -> str:
-        """Maps user model choice to exact Google Gemini model ID."""
-        choice = (model_choice or "3.6").lower().strip()
+        """
+        Maps user model choice to exact canonical Google model ID.
+        Guarantees full canonical names: gemini-3.1-pro, gemini-3.1-flash,
+        gemini-3.5-flash, gemini-3.6-flash, gemini-3.7-flash, gemini-3.8-flash.
+        """
+        choice = (model_choice or "gemini-3.7-flash").lower().strip()
 
-        mapping = {
-            "3.6": "gemini-3.6-flash",
-            "3.6-flash": "gemini-3.6-flash",
-            "flash": "gemini-3.6-flash",
-            "3.7": "gemini-3.7-flash",
-            "3.7-flash": "gemini-3.7-flash",
-            "3.7-pro": "gemini-3.7-pro",
-            "pro": "gemini-3.7-pro",
-            "3.8": "gemini-3.8-flash",
-            "3.8-flash": "gemini-3.8-flash",
-            "3.8-pro": "gemini-3.8-pro",
-            "agent": "gemini-3.6-flash",  # Jules native agent 3.6 Flash
+        # Exact canonical Google models
+        canonical_models = {
+            "gemini-3.1-pro",
+            "gemini-3.1-flash",
+            "gemini-3.5-flash",
+            "gemini-3.6-flash",
+            "gemini-3.7-flash",
+            "gemini-3.8-flash"
         }
 
-        if choice in mapping:
-            return mapping[choice]
+        if choice in canonical_models:
+            return choice
+
+        # Strict alias mapping to canonical models
+        alias_map = {
+            "3.1-pro": "gemini-3.1-pro",
+            "3.1-flash": "gemini-3.1-flash",
+            "3.1": "gemini-3.1-pro",
+            "pro": "gemini-3.1-pro",
+            "3.5-flash": "gemini-3.5-flash",
+            "3.5": "gemini-3.5-flash",
+            "3.6-flash": "gemini-3.6-flash",
+            "3.6": "gemini-3.6-flash",
+            "3.7-flash": "gemini-3.7-flash",
+            "3.7": "gemini-3.7-flash",
+            "flash": "gemini-3.7-flash",
+            "3.8-flash": "gemini-3.8-flash",
+            "3.8": "gemini-3.8-flash",
+            "agent": "gemini-3.7-flash"
+        }
+
+        if choice in alias_map:
+            return alias_map[choice]
 
         if choice.startswith("gemini-"):
             return choice

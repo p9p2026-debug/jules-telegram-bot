@@ -21,48 +21,74 @@ def get_main_keyboard(is_admin: bool = False) -> ReplyKeyboardMarkup:
 
 
 def get_model_switch_keyboard(current_model: str) -> InlineKeyboardMarkup:
-    """Inline keyboard for switching between 3.6, 3.7, 3.8, and Autonomous Repo Agent."""
-    m = (current_model or "").lower().strip()
+    """
+    Inline keyboard for selecting exact canonical Google models:
+    - Jules API models: gemini-3.7-flash, gemini-3.1-pro
+    - Google AI Studio models: gemini-3.1-pro, gemini-3.1-flash, gemini-3.5-flash,
+      gemini-3.6-flash, gemini-3.7-flash, gemini-3.8-flash
+    """
+    m = (current_model or "").strip()
 
-    def _mark(val: str, label: str) -> str:
-        is_selected = (m == val or m == val.replace("gemini-", "") or (val == "3.6-flash" and m in ["flash", "3.6"]))
-        return f"✅ {label}" if is_selected else label
+    def _mark(full_id: str) -> str:
+        return f"✅ {full_id}" if m == full_id else full_id
 
     keyboard = [
+        # Jules Official Models
         [
-            InlineKeyboardButton(
-                text=_mark("3.6-flash", "⚡ Gemini 3.6 Flash (Studio / Jules)"),
-                callback_data="user:set_model:3.6-flash"
-            )
+            InlineKeyboardButton(text="── 🛠️ نماذج Jules API الرسمية ──", callback_data="user:noop")
         ],
         [
             InlineKeyboardButton(
-                text=_mark("3.7-flash", "⚡ Gemini 3.7 Flash"),
-                callback_data="user:set_model:3.7-flash"
+                text=_mark("gemini-3.7-flash"),
+                callback_data="user:set_model:gemini-3.7-flash"
             ),
             InlineKeyboardButton(
-                text=_mark("3.7-pro", "🧠 Gemini 3.7 Pro"),
-                callback_data="user:set_model:3.7-pro"
+                text=_mark("gemini-3.1-pro"),
+                callback_data="user:set_model:gemini-3.1-pro"
             )
+        ],
+        # Google AI Studio Models
+        [
+            InlineKeyboardButton(text="── ⚡ نماذج Google AI Studio ──", callback_data="user:noop")
         ],
         [
             InlineKeyboardButton(
-                text=_mark("3.8-flash", "⚡ Gemini 3.8 Flash"),
-                callback_data="user:set_model:3.8-flash"
+                text=_mark("gemini-3.1-pro"),
+                callback_data="user:set_model:gemini-3.1-pro"
             ),
             InlineKeyboardButton(
-                text=_mark("3.8-pro", "🧠 Gemini 3.8 Pro"),
-                callback_data="user:set_model:3.8-pro"
+                text=_mark("gemini-3.1-flash"),
+                callback_data="user:set_model:gemini-3.1-flash"
             )
         ],
         [
             InlineKeyboardButton(
-                text=_mark("agent", "🛠️ مهندس المستودعات المستقل (Jules 3.6)"),
+                text=_mark("gemini-3.5-flash"),
+                callback_data="user:set_model:gemini-3.5-flash"
+            ),
+            InlineKeyboardButton(
+                text=_mark("gemini-3.6-flash"),
+                callback_data="user:set_model:gemini-3.6-flash"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=_mark("gemini-3.7-flash"),
+                callback_data="user:set_model:gemini-3.7-flash"
+            ),
+            InlineKeyboardButton(
+                text=_mark("gemini-3.8-flash"),
+                callback_data="user:set_model:gemini-3.8-flash"
+            )
+        ],
+        # Repo Agent Mode
+        [
+            InlineKeyboardButton(
+                text=f"{'✅ ' if m == 'agent' else ''}🛠️ وكيل المستودعات (Jules Agent)",
                 callback_data="user:set_model:agent"
             )
         ],
         [
-            InlineKeyboardButton(text="✏️ كتابة اسم نموذج آخر", callback_data="user:custom_model_prompt"),
             InlineKeyboardButton(text="❌ إغلاق", callback_data="user:close")
         ]
     ]

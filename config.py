@@ -42,13 +42,14 @@ MODEL_CHOICE_FLASH: str = "flash"
 MODEL_CHOICE_PRO: str = "pro"
 MODEL_CHOICE_AGENT: str = "agent"
 
-MODEL_PRO_ID: str = os.getenv("MODEL_PRO_ID", "gemini-2.5-pro")
-MODEL_FLASH_ID: str = os.getenv("MODEL_FLASH_ID", "gemini-2.5-flash")
+# Exact Canonical Google Model Definitions
+MODEL_PRO_ID: str = os.getenv("MODEL_PRO_ID", "gemini-3.1-pro")
+MODEL_FLASH_ID: str = os.getenv("MODEL_FLASH_ID", "gemini-3.7-flash")
 
 # Human-readable display names for Telegram UI (White-labeled)
-MODEL_PRO_NAME: str = os.getenv("MODEL_PRO_NAME", "🧠 النموذج المتعمق (Deep Logic)")
-MODEL_FLASH_NAME: str = os.getenv("MODEL_FLASH_NAME", "⚡ النموذج السريع (Fast Model)")
-MODEL_AGENT_NAME: str = os.getenv("MODEL_AGENT_NAME", "🛠️ مهندس المستودعات المستقل (Autonomous Agent)")
+MODEL_PRO_NAME: str = os.getenv("MODEL_PRO_NAME", "🧠 gemini-3.1-pro")
+MODEL_FLASH_NAME: str = os.getenv("MODEL_FLASH_NAME", "⚡ gemini-3.7-flash")
+MODEL_AGENT_NAME: str = os.getenv("MODEL_AGENT_NAME", "🛠️ مهندس المستودعات المستقل (Jules Agent)")
 
 # Database Configuration
 DATABASE_PATH: str = os.getenv("DATABASE_PATH", str(DEFAULT_DATA_DIR / "jules_bot.db")).strip()

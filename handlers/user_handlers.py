@@ -132,41 +132,49 @@ async def model_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await update.message.reply_text(reason)
         return
 
-    # Direct model setting via command argument: /model 3.6, /model 3.7, /model 3.8, /model agent
+    # Direct model setting via command argument: e.g. /model gemini-3.7-flash, /model gemini-3.1-pro
     if context.args:
-        requested = context.args[0].strip().lower()
-        resolved_id = JulesService.resolve_model_id(requested)
-        model_target = "agent" if requested in ["agent", "jules"] else requested
-        await UserRepository.update_model(user_id, model_target)
+        raw_arg = context.args[0].strip().lower()
+        if raw_arg in ["agent", "jules"]:
+            canonical = "agent"
+            display = "🛠️ وكيل المستودعات (Jules Agent)"
+            extra_note = "\n🛠️ تم تفعيل وكيل المستودعات. حدد مستودعك عبر <code>/repos</code> ثم أرسل طلبك."
+        else:
+            canonical = JulesService.resolve_model_id(raw_arg)
+            display = canonical
+            extra_note = ""
 
-        extra_note = ""
-        if model_target == "agent":
-            extra_note = "\n🛠️ تم تفعيل وكيل Jules المستقل (3.6 Flash). استخدم <code>/repos</code> لاختيار المستودع."
-
+        await UserRepository.update_model(user_id, canonical)
         await update.message.reply_text(
-            f"✅ <b>تم ضبط وتفعيل النموذج المطلوب بنجاح!</b>\n"
-            f"• المعرف المعتمد: <code>{resolved_id}</code>{extra_note}\n\n"
-            "يمكنك إرسال رسائلك واستفساراتك الآن باستخدام هذا النموذج.",
+            f"✅ <b>تم تفعيل النموذج المعتمد بنجاح:</b>\n"
+            f"🎯 <code>{display}</code>{extra_note}\n\n"
+            "سيتم توجيه جميع طلباتك القادمة بهذا الاسم الرسمي الدقيق.",
             parse_mode=ParseMode.HTML
         )
         return
 
     user = await UserRepository.get_by_id(user_id)
-    current_model = user.get("selected_model", config.MODEL_CHOICE_FLASH) if user else config.MODEL_CHOICE_FLASH
-    resolved_current = JulesService.resolve_model_id(current_model)
+    current_model = user.get("selected_model", "gemini-3.7-flash") if user else "gemini-3.7-flash"
+    resolved_current = "🛠️ وكيل المستودعات (Jules Agent)" if current_model == "agent" else JulesService.resolve_model_id(current_model)
 
     text = (
-        "🎯 <b>اختر نموذج الذكاء الاصطناعي المطلوب بدقة:</b>\n"
+        "🎯 <b>قائمة النماذج الرسمية المعتمدة لـ Google:</b>\n"
         "━━━━━━━━━━━━━━━━━━━━━\n"
         f"• <b>النموذج النشط حالياً:</b> <code>{resolved_current}</code>\n"
         "━━━━━━━━━━━━━━━━━━━━━\n"
-        "⚡ <b>Gemini 3.6 Flash:</b> فائق السرعة، وهو النموذج الأساسي المعتمد لوكيل Jules وللشات السريع.\n\n"
-        "⚡ <b>Gemini 3.7 Flash / Pro:</b> جيل متطور بقدرات تفكير متقدمة وسرعة استجابة فائقة.\n\n"
-        "🧠 <b>Gemini 3.8 Flash / Pro:</b> أحدث إصدارات التفكير العميق للأكواد والتحليلات الضخمة.\n\n"
-        "🛠️ <b>مهندس المستودعات المستقل:</b> وكيل Jules المباشر (3.6 Flash) لربط GitHub وفتح الـ PRs.\n"
+        "🛠️ <b>نماذج Jules API الرسمية (حصرياً):</b>\n"
+        "• <code>gemini-3.7-flash</code>\n"
+        "• <code>gemini-3.1-pro</code>\n\n"
+        "⚡ <b>نماذج Google AI Studio:</b>\n"
+        "• <code>gemini-3.1-pro</code> (النموذج الوحيد Pro)\n"
+        "• <code>gemini-3.1-flash</code>\n"
+        "• <code>gemini-3.5-flash</code>\n"
+        "• <code>gemini-3.6-flash</code>\n"
+        "• <code>gemini-3.7-flash</code>\n"
+        "• <code>gemini-3.8-flash</code>\n"
         "━━━━━━━━━━━━━━━━━━━━━\n"
-        "💡 <i>يمكنك أيضاً التحديد السريع مباشرة:</i>\n"
-        "<code>/model 3.6</code> أو <code>/model 3.7</code> أو <code>/model 3.8</code> أو <code>/model agent</code>"
+        "💡 <i>اختر النموذج من الأزرار بالأسفل، أو اكتب اسمه بالكامل:</i>\n"
+        "<code>/model gemini-3.5-flash</code>"
     )
 
     await update.message.reply_text(
@@ -1006,6 +1014,10 @@ async def user_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
     if data == "user:close":
         await query.delete_message()
 
+    elif data == "user:noop":
+        await query.answer()
+        return
+
     elif data.startswith("user:set_model:"):
         model_target = data.split(":")[2]
 
@@ -1021,22 +1033,28 @@ async def user_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
             if not allowed_pro:
                 await query.answer(reason_pro, show_alert=True)
                 return
-        elif model_target == config.MODEL_CHOICE_AGENT:
+        elif model_target in ["agent", config.MODEL_CHOICE_AGENT]:
             allowed_agent, reason_agent = await PermissionService.check_access(user_id, config.FEATURE_AUTONOMOUS_AGENT)
             if not allowed_agent:
                 await query.answer(reason_agent, show_alert=True)
                 return
 
-        resolved_id = JulesService.resolve_model_id(model_target)
-        await UserRepository.update_model(user_id, model_target)
+        if model_target in ["agent", config.MODEL_CHOICE_AGENT]:
+            canonical_to_save = "agent"
+            display_name = "🛠️ وكيل المستودعات (Jules Agent)"
+        else:
+            canonical_to_save = JulesService.resolve_model_id(model_target)
+            display_name = canonical_to_save
+
+        await UserRepository.update_model(user_id, canonical_to_save)
 
         try:
-            await query.edit_message_reply_markup(reply_markup=get_model_switch_keyboard(model_target))
+            await query.edit_message_reply_markup(reply_markup=get_model_switch_keyboard(canonical_to_save))
         except Exception:
             pass
 
         extra_tip = ""
-        if model_target == config.MODEL_CHOICE_AGENT:
+        if canonical_to_save == "agent":
             active_src = await SettingsRepository.get_setting(f"user_source:{user_id}", "")
             if active_src:
                 clean_src = active_src.replace("sources/github-", "").replace("sources/", "")
@@ -1045,8 +1063,8 @@ async def user_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
                 extra_tip = "\n⚠️ لم تحدد مستودعاً بعد! استخدم الأمر <code>/repos</code> لاختيار المستودع."
 
         await query.message.reply_text(
-            f"✅ <b>تم تفعيل النموذج بنجاح:</b>\n"
-            f"🎯 <code>{resolved_id}</code>{extra_tip}",
+            f"✅ <b>تم تفعيل النموذج المعتمد بنجاح:</b>\n"
+            f"🎯 <code>{display_name}</code>{extra_tip}",
             parse_mode=ParseMode.HTML
         )
 
