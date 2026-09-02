@@ -182,13 +182,8 @@ class JulesApiClient:
                             msg = act["agentMessaged"].get("agentMessage")
                             if msg:
                                 return msg
-                        elif "progressUpdated" in act:
-                            prog = act["progressUpdated"]
-                            desc = prog.get("description") or prog.get("title")
-                            if desc:
-                                return desc
                         elif "sessionCompleted" in act:
-                            return "✅ اكتملت المهمة بنجاح بواسطة Jules."
+                            return "✅ اكتملت المهمة البرمجية بنجاح بواسطة Jules."
 
             try:
                 session_data = await cls.get_session(clean_name, api_key=api_key)

@@ -893,7 +893,78 @@ async def document_message_handler(update: Update, context: ContextTypes.DEFAULT
     elif ext == "pdf":
         mime_type = "application/pdf"
 
-    await UserRepository.get_or_create(user.id, user.username, user.first_name)
+    user_db = await UserRepository.get_or_create(user.id, user.username, user.first_name)
+    selected_model = user_db.get("selected_model", config.MODEL_CHOICE_FLASH)
+
+    # If the user is in Autonomous Agent mode, launch repo coding task and monitor for generated files
+    if selected_model == config.MODEL_CHOICE_AGENT:
+        allowed_agent, reason_agent = await PermissionService.check_access(user.id, config.FEATURE_AUTONOMOUS_AGENT)
+        if not allowed_agent:
+            await update.message.reply_text(reason_agent)
+            return
+
+        active_source = await SettingsRepository.get_setting(f"user_source:{user.id}", "")
+        if not active_source:
+            try:
+                sources = await JulesApiClient.list_sources()
+                if sources:
+                    keyboard = get_sources_keyboard(sources, "")
+                    await update.message.reply_text(
+                        "⚠️ <b>يرجى تحديد المستودع المستهدف أولاً!</b>\n"
+                        "اختر المستودع الذي ترغب في أن ينفذ الوكيل المهمة عليه ويفتح Pull Request:",
+                        parse_mode=ParseMode.HTML,
+                        reply_markup=keyboard
+                    )
+                else:
+                    await update.message.reply_text(
+                        "⚠️ <b>لم يتم العثور على مستودعات مرتبطة بحسابك في Jules</b>\n"
+                        "يرجى ربط مستودعك عبر https://jules.google.com ثم تشغيل الأمر <code>/repos</code>.",
+                        parse_mode=ParseMode.HTML
+                    )
+            except Exception as exc:
+                await update.message.reply_text(f"⚠️ يرجى اختيار المستودع أولاً عبر <code>/repos</code> ({exc})")
+            return
+
+        repo_display = active_source.replace("sources/github-", "").replace("sources/", "")
+        caption_text = update.message.caption or f"تنفيذ المهمة بناءً على النموذج المرفق {file_name}"
+        effective_prompt = f"{caption_text}\n(الملف المرفق: {file_name})"
+
+        status_msg = await update.message.reply_text(
+            f"🚀 <b>جاري إرسال المهمة البرمجية لوكيل المستودعات...</b>\n"
+            f"📁 <b>المستودع:</b> <code>{repo_display}</code>\n"
+            f"📄 <b>الملف:</b> <code>{file_name}</code>\n"
+            f"📝 <b>الطلب:</b> <i>{caption_text[:100]}</i>\n"
+            "⏳ جاري إنشاء بيئة العمل وتوليد الملفات...",
+            parse_mode=ParseMode.HTML
+        )
+
+        try:
+            api_key = await JulesService.get_effective_api_key(user.id, key_type="jules")
+            session_obj = await JulesApiClient.create_session(
+                source=active_source,
+                prompt=effective_prompt,
+                api_key=api_key
+            )
+            session_name = session_obj.get("name")
+            await TaskMonitorService.start_monitoring(
+                bot=context.bot,
+                chat_id=update.effective_chat.id,
+                status_message_id=status_msg.message_id,
+                session_name=session_name,
+                repo_name=repo_display,
+                prompt=effective_prompt,
+                user_id=update.effective_user.id,
+                api_key=api_key
+            )
+        except Exception as exc:
+            logger.exception("Error launching Jules API session for document: %s", exc)
+            await status_msg.edit_text(
+                f"❌ <b>فشل إطلاق مهمة الوكيل:</b>\n<code>{exc}</code>\n\n"
+                "يمكنك العودة لنموذج الدردشة السريع عبر <code>/model</code>.",
+                parse_mode=ParseMode.HTML
+            )
+        return
+
     session = await SessionRepository.get_active_session(user.id)
 
     # Indicate upload/processing
