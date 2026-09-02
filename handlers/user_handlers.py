@@ -21,6 +21,7 @@ from database.repositories import SessionRepository, UserRepository
 from services.format_service import FormatService
 from services.jules_service import JulesService
 from services.permission_service import PermissionService
+from services.rich_service import RichService, ComposeStore
 from utils.keyboards import (
     get_main_keyboard,
     get_model_switch_keyboard,
@@ -219,6 +220,100 @@ async def apikey_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.message.reply_text("✅ تم حفظ مفتاح Google API الخاص بك بنجاح! سيتم توجيه جميع طلباتك باستخدامه.")
 
 
+async def compose_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handles /compose: starts interactive multi-part rich message builder."""
+    user_id = update.effective_user.id
+    allowed, reason = await PermissionService.check_access(user_id)
+    if not allowed:
+        await update.message.reply_text(reason)
+        return
+
+    session = ComposeStore.get_or_create(user_id)
+    session.clear()
+
+    compose_text = (
+        "📝 <b>محرر المنشور المركب (Rich Message Composer)</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "أنت الآن في وضع تجميع المنشور الغني! يمكنك إرسال عدة قطع بالترتيب:\n"
+        "• ✍️ أرسل نصوصاً أو شروحات.\n"
+        "• 📊 أرسل جداول ماركداون (أعمدة وصفوف).\n"
+        "• 🖼️ أرسل صوراً أو مخططات (مع كابشن أو بدونه).\n\n"
+        "سيقوم البوت بحقن الصور والجداول ودمجها في <b>رسالة واحدة متصلة (Single Rich Message)</b>!\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "⚙️ <b>أوامر التحكم أثناء التحرير:</b>\n"
+        "• <code>/preview</code> - معاينة القطع المجمعة حتى الآن.\n"
+        "• <code>/undo</code> - التراجع عن وحذف آخر قطعة.\n"
+        "• <code>/done</code> - تجميع وبناء ونشر الرسالة الغنية الواحدة.\n"
+        "• <code>/cancel</code> - إلغاء وضع التحرير ومسح المسودة."
+    )
+    await update.message.reply_text(compose_text, parse_mode=ParseMode.HTML)
+
+
+async def preview_compose_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handles /preview: shows current draft summary."""
+    user_id = update.effective_user.id
+    session = ComposeStore.get(user_id)
+    if not session or session.size == 0:
+        await update.message.reply_text("ℹ️ مسودة المنشور المركب فارغة حالياً. أرسل نصاً أو صورة أولاً.")
+        return
+
+    desc = "\n".join(session.describe())
+    await update.message.reply_text(
+        f"👁️ <b>معاينة قطع المنشور ({session.size} قطع):</b>\n\n{desc}\n\n"
+        "• أرسل المزيد من القطع لإضافتها.\n"
+        "• اكتب <code>/done</code> للنشر كرسالة واحدة.\n"
+        "• اكتب <code>/undo</code> لحذف آخر قطعة.",
+        parse_mode=ParseMode.HTML
+    )
+
+
+async def undo_compose_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handles /undo: removes the last piece added."""
+    user_id = update.effective_user.id
+    session = ComposeStore.get(user_id)
+    if not session or session.size == 0:
+        await update.message.reply_text("ℹ️ لا توجد قطع للتراجع عنها في المسودة.")
+        return
+
+    session.undo()
+    await update.message.reply_text(
+        f"↩️ تم التراجع عن آخر قطعة بنجاح. المتبقي في المسودة: {session.size} قطعة.\n"
+        "اكتب <code>/preview</code> للمعاينة أو <code>/done</code> للنشر.",
+        parse_mode=ParseMode.HTML
+    )
+
+
+async def done_compose_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handles /done: compiles and publishes the single rich message."""
+    user_id = update.effective_user.id
+    session = ComposeStore.get(user_id)
+    if not session or session.size == 0:
+        await update.message.reply_text("ℹ️ مسودة المنشور فارغة. أرسل محتوى أولاً ثم اكتب /done.")
+        return
+
+    md, media, _ = session.build()
+    ComposeStore.remove(user_id)
+
+    await update.message.reply_text("🚀 <b>جاري دمج ونشر الرسالة الغنية المركبة...</b>", parse_mode=ParseMode.HTML)
+
+    await RichService.deliver_rich(
+        bot=context.bot,
+        chat_id=update.effective_chat.id,
+        raw_markdown=md,
+        media=media
+    )
+
+
+async def cancel_compose_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handles /cancel: cancels active compose mode."""
+    user_id = update.effective_user.id
+    if ComposeStore.is_composing(user_id):
+        ComposeStore.remove(user_id)
+        await update.message.reply_text("❌ تم إلغاء وضع التحرير ومسح المسودة بنجاح.")
+    else:
+        await update.message.reply_text("ℹ️ لست في وضع تحرير المنشور حالياً.")
+
+
 async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handles general incoming text messages from users."""
     user = update.effective_user
@@ -245,6 +340,19 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         await admin_command(update, context)
         return
 
+    # Check if user is actively in /compose mode
+    if ComposeStore.is_composing(user.id):
+        if text.startswith("/"):
+            return
+        session = ComposeStore.get(user.id)
+        session.add_text(text)
+        await update.message.reply_text(
+            f"✅ تمت إضافة النص إلى المنشور المركب (إجمالي القطع: <b>{session.size}</b>).\n"
+            "• أرسل صورة أو نصاً آخر، أو اكتب <code>/preview</code> للمعاينة أو <code>/done</code> للنشر.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
     # Permission check for chat
     allowed, reason = await PermissionService.check_access(user.id)
     if not allowed:
@@ -267,18 +375,30 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         user_prompt=text
     )
 
-    # Send formatted response
-    await FormatService.send_smart_message(
+    # Deliver using Rich Message Service (supporting tables, RTL, and intelligent fallback)
+    await RichService.deliver_rich(
         bot=context.bot,
         chat_id=update.effective_chat.id,
-        raw_markdown_text=response_text,
+        raw_markdown=response_text,
         reply_to_message_id=update.message.message_id
     )
 
 
 async def photo_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handles incoming photos for visual and architectural analysis."""
+    """Handles incoming photos for visual and architectural analysis or compose mode."""
     user = update.effective_user
+
+    # If in compose mode, store photo as piece
+    if ComposeStore.is_composing(user.id):
+        photo_obj = update.message.photo[-1]
+        session = ComposeStore.get(user.id)
+        session.add_photo(file_id=photo_obj.file_id, caption=update.message.caption)
+        await update.message.reply_text(
+            f"✅ تمت إضافة الصورة إلى المنشور المركب (إجمالي القطع: <b>{session.size}</b>).\n"
+            "• أرسل نصوصاً أو صوراً أخرى، أو اكتب <code>/preview</code> للمعاينة أو <code>/done</code> للنشر.",
+            parse_mode=ParseMode.HTML
+        )
+        return
 
     allowed, reason = await PermissionService.check_access(user.id, config.FEATURE_SEND_IMAGES)
     if not allowed:
@@ -311,10 +431,22 @@ async def photo_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
         file_name="image.jpg"
     )
 
-    await FormatService.send_smart_message(
+    # Build integrated rich response: embed photo + tables + code in ONE message
+    media_list = [{
+        "id": "m0",
+        "media": {
+            "type": "photo",
+            "media": photo_obj.file_id
+        }
+    }]
+    clean_cap = (update.message.caption or "مخطط التحليل البرمجي").replace('"', '')[:60]
+    integrated_markdown = f"![](tg://photo?id=m0 \"{clean_cap}\")\n\n{response_text}"
+
+    await RichService.deliver_rich(
         bot=context.bot,
         chat_id=update.effective_chat.id,
-        raw_markdown_text=response_text,
+        raw_markdown=integrated_markdown,
+        media=media_list,
         reply_to_message_id=update.message.message_id
     )
 
@@ -323,13 +455,25 @@ async def document_message_handler(update: Update, context: ContextTypes.DEFAULT
     """Handles incoming code documents, markdown, and PDF files."""
     user = update.effective_user
 
+    doc = update.message.document
+    file_name = doc.file_name or "document"
+
+    # If in compose mode, store document as piece
+    if ComposeStore.is_composing(user.id):
+        session = ComposeStore.get(user.id)
+        session.add_document(file_id=doc.file_id, caption=update.message.caption or file_name)
+        await update.message.reply_text(
+            f"✅ تمت إضافة الملف إلى المنشور المركب (إجمالي القطع: <b>{session.size}</b>).\n"
+            "• اكتب <code>/preview</code> للمعاينة أو <code>/done</code> للنشر.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
     allowed, reason = await PermissionService.check_access(user.id, config.FEATURE_UPLOAD_FILES)
     if not allowed:
         await update.message.reply_text(reason)
         return
 
-    doc = update.message.document
-    file_name = doc.file_name or "document"
     mime_type = doc.mime_type or "text/plain"
 
     # Identify file extension
@@ -350,7 +494,7 @@ async def document_message_handler(update: Update, context: ContextTypes.DEFAULT
     await file.download_to_memory(out=bio)
     doc_bytes = bio.getvalue()
 
-    caption = update.message.caption or f"يرجى فحص وتحليل الملف ({file_name}) وتقديم مراجعة برمجية شاملة له."
+    caption = update.message.caption or f"يرجى فحص وتحليل الملف ({file_name}) وتقديم مراجعة برمجية شاملة له مع جداول مقارنة إن لزم."
 
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
 
@@ -363,10 +507,10 @@ async def document_message_handler(update: Update, context: ContextTypes.DEFAULT
         file_name=file_name
     )
 
-    await FormatService.send_smart_message(
+    await RichService.deliver_rich(
         bot=context.bot,
         chat_id=update.effective_chat.id,
-        raw_markdown_text=response_text,
+        raw_markdown=response_text,
         reply_to_message_id=update.message.message_id
     )
 
@@ -445,8 +589,16 @@ def register_user_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("sessions", sessions_command))
     app.add_handler(CommandHandler("apikey", apikey_command))
 
+    # Compose mode commands
+    app.add_handler(CommandHandler("compose", compose_command))
+    app.add_handler(CommandHandler("preview", preview_compose_command))
+    app.add_handler(CommandHandler("undo", undo_compose_command))
+    app.add_handler(CommandHandler("done", done_compose_command))
+    app.add_handler(CommandHandler("cancel", cancel_compose_command))
+
     app.add_handler(CallbackQueryHandler(user_callback_handler, pattern=r"^user:"))
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message_handler))
     app.add_handler(MessageHandler(filters.PHOTO, photo_message_handler))
     app.add_handler(MessageHandler(filters.Document.ALL, document_message_handler))
+
