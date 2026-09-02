@@ -704,7 +704,10 @@ async def user_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
         else:
             display_name = config.MODEL_FLASH_NAME
 
-        await query.edit_message_reply_markup(reply_markup=get_model_switch_keyboard(model_target))
+        try:
+            await query.edit_message_reply_markup(reply_markup=get_model_switch_keyboard(model_target))
+        except Exception:
+            pass
 
         extra_tip = ""
         if model_target == config.MODEL_CHOICE_AGENT:
@@ -724,7 +727,10 @@ async def user_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
 
         display_name = source_name.replace("sources/github-", "").replace("sources/", "")
         await query.answer("تم تفعيل المستودع بنجاح!")
-        await query.edit_message_reply_markup(reply_markup=None)
+        try:
+            await query.edit_message_reply_markup(reply_markup=None)
+        except Exception:
+            pass
         await query.message.reply_text(
             f"⭐ <b>تم اختيار المستودع بنجاح:</b>\n<code>{display_name}</code>\n\n"
             f"• تم تحويل النموذج تلقائياً إلى: <b>{config.MODEL_AGENT_NAME}</b>\n"
@@ -739,14 +745,20 @@ async def user_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
             await query.edit_message_reply_markup(reply_markup=get_sources_keyboard(sources, active_src))
             await query.answer("تم تحديث قائمة المستودعات!")
         except Exception as exc:
-            await query.answer(f"فشل التحديث: {exc}", show_alert=True)
+            if "not modified" in str(exc).lower():
+                await query.answer("القائمة محدثة بالفعل.")
+            else:
+                await query.answer(f"فشل التحديث: {exc}", show_alert=True)
 
     elif data.startswith("user:select_session:"):
         session_id = data.split(":")[2]
         success = await SessionRepository.set_active_session(user_id, session_id)
         if success:
             sessions = await SessionRepository.list_user_sessions(user_id, limit=8)
-            await query.edit_message_reply_markup(reply_markup=get_sessions_keyboard(sessions, session_id))
+            try:
+                await query.edit_message_reply_markup(reply_markup=get_sessions_keyboard(sessions, session_id))
+            except Exception:
+                pass
             await query.message.reply_text(f"🔄 تم التبديل إلى الجلسة <code>#{session_id}</code> واستئناف سياقها.", parse_mode=ParseMode.HTML)
 
     elif data.startswith("user:delete_session:"):
@@ -756,10 +768,13 @@ async def user_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
         active = await SessionRepository.get_active_session(user_id)
         active_id = active["session_id"] if active else ""
 
-        if sessions:
-            await query.edit_message_reply_markup(reply_markup=get_sessions_keyboard(sessions, active_id))
-        else:
-            await query.edit_message_text("📂 تم حذف جميع جلساتك السابقة.")
+        try:
+            if sessions:
+                await query.edit_message_reply_markup(reply_markup=get_sessions_keyboard(sessions, active_id))
+            else:
+                await query.edit_message_text("📂 تم حذف جميع جلساتك السابقة.")
+        except Exception:
+            pass
 
     elif data == "user:new_session":
         allowed, reason = await PermissionService.check_access(user_id, config.FEATURE_CREATE_SESSIONS)

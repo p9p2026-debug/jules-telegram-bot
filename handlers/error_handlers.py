@@ -9,6 +9,7 @@ import logging
 import traceback
 from telegram import Update
 from telegram.constants import ParseMode
+from telegram.error import BadRequest
 from telegram.ext import ContextTypes
 import config
 
@@ -16,6 +17,11 @@ logger = logging.getLogger(__name__)
 
 async def error_handler(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Logs the error and notifies the user with a friendly message."""
+    if isinstance(context.error, BadRequest) and "message is not modified" in str(context.error).lower():
+        # Benign Telegram error when a user presses a button resulting in identical markup/text
+        logger.debug("Silently ignoring 'Message is not modified' error.")
+        return
+
     logger.error("Exception while handling an update:", exc_info=context.error)
 
     # Format traceback for logging
