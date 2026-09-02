@@ -65,10 +65,18 @@ class TaskMonitorService:
                 state = session_data.get("state", "RUNNING").upper()
                 activities = await JulesApiClient.list_activities(session_name, api_key)
 
-                # Check if Pull Request was opened
-                outputs = session_data.get("outputs", {})
-                pr_info = outputs.get("pullRequest", {})
-                pr_url = pr_info.get("url") or pr_info.get("htmlUrl")
+                # Check if Pull Request was opened (outputs is a list or dict)
+                raw_outputs = session_data.get("outputs", [])
+                pr_url = None
+                if isinstance(raw_outputs, list):
+                    for item in raw_outputs:
+                        if isinstance(item, dict) and "pullRequest" in item:
+                            pr_url = item["pullRequest"].get("url") or item["pullRequest"].get("htmlUrl")
+                            if pr_url:
+                                break
+                elif isinstance(raw_outputs, dict):
+                    pr_info = raw_outputs.get("pullRequest", {})
+                    pr_url = pr_info.get("url") or pr_info.get("htmlUrl")
 
                 # Extract latest activity notes
                 latest_activity = "جاري استنساخ وفحص المستودع..."

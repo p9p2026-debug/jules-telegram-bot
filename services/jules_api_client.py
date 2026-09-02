@@ -102,7 +102,8 @@ class JulesApiClient:
                 "githubRepoContext": {
                     "startingBranch": starting_branch
                 }
-            }
+            },
+            "automationMode": "AUTO_CREATE_PR"
         }
         return await asyncio.to_thread(cls._execute_request, "sessions", "POST", payload, api_key)
 
@@ -146,5 +147,5 @@ class JulesApiClient:
         Endpoint: POST /v1alpha/{session_name}:sendMessage
         """
         clean_name = session_name if session_name.startswith("sessions/") else f"sessions/{session_name}"
-        payload = {"message": message}
+        payload = {"prompt": message}
         return await asyncio.to_thread(cls._execute_request, f"{clean_name}:sendMessage", "POST", payload, api_key)
