@@ -22,7 +22,7 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
             if len(parts) > 1:
                 path = parts[1]
 
-        if path in ["/", "/health", "/status"]:
+        if path in ["/", "/health", "/healthz", "/status"]:
             body = '{"status": "healthy", "service": "Jules Telegram Bot", "version": "1.0.0"}\n'
             response = (
                 "HTTP/1.1 200 OK\r\n"
