@@ -373,24 +373,68 @@ async def tasks_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
     try:
-        sessions = await JulesApiClient.list_sessions()
+        api_key = await JulesService.get_effective_api_key(user_id, key_type="jules")
+        sessions = await JulesApiClient.list_sessions(api_key=api_key)
         if not sessions:
             await update.message.reply_text("ℹ️ لا توجد مهام برمجية سابقة مسجلة على الوكيل.")
             return
 
-        lines = ["📋 <b>آخر المهام البرمجية لوكيل المستودعات:</b>\n━━━━━━━━━━━━━━━━━━━━━"]
-        for s in sessions[:6]:
-            name = s.get("name", "").replace("sessions/", "")
-            state = s.get("state", "UNKNOWN")
-            prompt = (s.get("prompt") or "بدون عنوان")[:45]
-            outputs = s.get("outputs", {})
-            pr = outputs.get("pullRequest", {}).get("url", "")
-            state_emoji = "✅" if state in ["COMPLETED", "SUCCEEDED"] or pr else ("⏳" if state == "RUNNING" else "❌")
-            pr_text = f"\n  🔗 <a href='{pr}'>Pull Request على GitHub</a>" if pr else ""
-            lines.append(f"{state_emoji} <b>#{name}</b>: {prompt} [{state}]{pr_text}")
+        lines = ["📋 <b>آخر المهام البرمجية لوكيل المستودعات (Jules):</b>\n━━━━━━━━━━━━━━━━━━━━━"]
+        for s in sessions[:8]:
+            if not isinstance(s, dict):
+                continue
+            name = str(s.get("name", "")).replace("sessions/", "")
+            state = str(s.get("state", "UNKNOWN")).upper()
+            prompt = str(s.get("prompt") or s.get("title") or "بدون عنوان")[:50]
+            sess_url = s.get("url") or f"https://jules.google.com/session/{name}"
 
-        lines.append("━━━━━━━━━━━━━━━━━━━━━\n• لتشغيل مهمة جديدة، حدد المستودع عبر <code>/repos</code> ثم أرسل طلبك في الشات مباشرة.")
-        await update.message.reply_text("\n".join(lines), parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+            # Safe extraction of pull request URL from outputs
+            pr = ""
+            raw_outputs = s.get("outputs")
+            if isinstance(raw_outputs, list):
+                for item in raw_outputs:
+                    if isinstance(item, dict) and "pullRequest" in item:
+                        pr_dict = item.get("pullRequest")
+                        if isinstance(pr_dict, dict):
+                            pr = pr_dict.get("url") or pr_dict.get("htmlUrl") or ""
+                            if pr:
+                                break
+            elif isinstance(raw_outputs, dict):
+                pr_dict = raw_outputs.get("pullRequest")
+                if isinstance(pr_dict, dict):
+                    pr = pr_dict.get("url") or pr_dict.get("htmlUrl") or ""
+
+            # Arabic status indicators
+            if state in ["COMPLETED", "SUCCEEDED"]:
+                state_emoji = "✅"
+                state_label = "مكتملة بنجاح"
+            elif state in ["IN_PROGRESS", "RUNNING"]:
+                state_emoji = "⚙️"
+                state_label = "قيد التنفيذ"
+            elif state in ["STARTING", "INITIALIZING"]:
+                state_emoji = "⏳"
+                state_label = "جاري البدء"
+            elif "FEEDBACK" in state or "WAITING" in state or "APPROVAL" in state:
+                state_emoji = "💬"
+                state_label = "بانتظار ردك أو اعتماد الخطة"
+            elif state in ["FAILED", "CANCELLED"]:
+                state_emoji = "❌"
+                state_label = "فشلت أو تم الإلغاء"
+            else:
+                state_emoji = "🔹"
+                state_label = state
+
+            links = []
+            if pr:
+                links.append(f"<a href='{pr}'>Pull Request 🚀</a>")
+            if sess_url:
+                links.append(f"<a href='{sess_url}'>عرض في منصة Jules ↗️</a>")
+            links_part = f"\n  🔗 {' | '.join(links)}" if links else ""
+
+            lines.append(f"{state_emoji} <b>#{name}</b>: {prompt}\n  الحالة: <code>{state_label}</code>{links_part}")
+
+        lines.append("━━━━━━━━━━━━━━━━━━━━━\n• لتشغيل مهمة جديدة، اختر المستودع عبر <code>/repos</code> ثم أرسل طلبك في الشات مباشرة.")
+        await update.message.reply_text("\n\n".join(lines), parse_mode=ParseMode.HTML, disable_web_page_preview=True)
     except JulesApiException as j_err:
         await update.message.reply_text(f"⚠️ <b>خطأ في واجهة Jules API:</b>\n{j_err}", parse_mode=ParseMode.HTML)
     except Exception as exc:
