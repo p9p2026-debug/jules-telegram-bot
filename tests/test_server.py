@@ -27,7 +27,7 @@ class TestHealthServer(unittest.IsolatedAsyncioTestCase):
             # Test /
             status_root, body_root = await asyncio.to_thread(_request, "/")
             self.assertEqual(status_root, 200)
-            self.assertIn("Jules Telegram Bot", body_root)
+            self.assertIn("AI Telegram Bot", body_root)
 
         finally:
             server.close()

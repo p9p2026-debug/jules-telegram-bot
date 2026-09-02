@@ -149,8 +149,8 @@ class JulesService:
             if "API_KEY_INVALID" in err_msg or "400" in err_msg and "key" in err_msg.lower():
                 return "❌ **خطأ في مفتاح API:** المفتاح المستخدم غير صالح أو منتهي الصلاحية. يرجى التحقق منه وتحديثه عبر `/apikey`."
             elif "RESOURCE_EXHAUSTED" in err_msg or "429" in err_msg:
-                return "⏳ **تم تجاوز حد الطلبات (Rate Limit):** يرجى الانتظار دقيقة أو التبديل إلى نموذج Gemini Flash عبر `/model`."
-            return f"❌ **حدث خطأ أثناء معالجة طلبك بواسطة Jules:**\n`{html_escape(str(exc)[:300])}`"
+                return "⏳ **تم تجاوز حد الطلبات (Rate Limit):** يرجى الانتظار دقيقة أو التبديل إلى النموذج السريع عبر `/model`."
+            return f"❌ **حدث خطأ أثناء معالجة طلبك:**\n`{html_escape(str(exc)[:300])}`"
 
 
 def html_escape(text: str) -> str:

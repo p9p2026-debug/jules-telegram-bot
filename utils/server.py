@@ -23,7 +23,7 @@ async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWrit
                 path = parts[1]
 
         if path in ["/", "/health", "/healthz", "/status"]:
-            body = '{"status": "healthy", "service": "Jules Telegram Bot", "version": "1.0.0"}\n'
+            body = '{"status": "healthy", "service": "AI Telegram Bot", "version": "1.0.0"}\n'
             response = (
                 "HTTP/1.1 200 OK\r\n"
                 "Content-Type: application/json; charset=utf-8\r\n"

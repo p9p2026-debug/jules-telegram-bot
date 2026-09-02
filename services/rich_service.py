@@ -334,7 +334,7 @@ class RichService:
         req = urllib.request.Request(
             url,
             data=data,
-            headers={"Content-Type": "application/json", "User-Agent": "JulesTelegramBot"}
+            headers={"Content-Type": "application/json", "User-Agent": "AIAssistantBot"}
         )
         with urllib.request.urlopen(req, timeout=15) as resp:
             return json.loads(resp.read().decode("utf-8"))

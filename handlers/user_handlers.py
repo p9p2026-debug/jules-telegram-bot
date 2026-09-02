@@ -50,9 +50,9 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     is_admin = PermissionService.is_admin(user.id)
 
     welcome_text = (
-        f"🤖 <b>أهلاً بك يا {user.first_name} في وكيل Jules by Google المتقدم!</b>\n"
+        f"🤖 <b>أهلاً بك يا {user.first_name} في المساعد البرمجي والهندسي المتقدم!</b>\n"
         "━━━━━━━━━━━━━━━━━━━━━\n"
-        "أنا وكيلك الهندسي والبرمجي المتكامل، مدعوم بأحدث نماذج Google Gemini.\n\n"
+        "أنا مساعدك التقني المتكامل لحل المشكلات البرمجية، وتصميم المعماريات السحابية، وتحليل الأكواد والملفات.\n\n"
         "✨ <b>قدراتي وخدماتي البرمجية:</b>\n"
         "• كتابة وتدقيق الأكواد بمختلف لغات البرمجة وحل المشكلات المعقدة.\n"
         "• مراجعة وتصميم المعماريات البرمجية السحابية (Cloud Architectures).\n"
@@ -83,18 +83,18 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     is_admin = PermissionService.is_admin(user_id)
 
     help_text = (
-        "📖 <b>دليل استخدام وأوامر Jules Telegram Bot:</b>\n"
+        "📖 <b>دليل استخدام وأوامر المساعد الذكي:</b>\n"
         "━━━━━━━━━━━━━━━━━━━━━\n"
         "⚡ <b>النماذج والذكاء الاصطناعي:</b>\n"
-        "• <code>/model</code> - التبديل التفاعلي بين Gemini 3.6 Flash و Gemini 3.1 Pro.\n\n"
+        "• <code>/model</code> - التبديل التفاعلي بين النموذج السريع والنموذج المتعمق.\n\n"
         "💬 <b>إدارة الجلسات والسياق:</b>\n"
         "• <code>/new</code> - بدء جلسة جديدة كلياً وتصفير سياق المحادثة.\n"
         "• <code>/sessions</code> - استعراض الجلسات السابقة والتبديل بينها أو حذفها.\n\n"
         "🔑 <b>مفاتيح API:</b>\n"
-        "• <code>/apikey &lt;key&gt;</code> - تعيين مفتاح Google Gemini خاص بك لتجنب نفاد الحصة.\n"
+        "• <code>/apikey &lt;key&gt;</code> - تعيين مفتاح API خاص بك لتجنب نفاد الحصة.\n"
         "• <code>/apikey clear</code> - إزالة مفتاحك الخاص والعودة للمفتاح الافتراضي للبوت.\n\n"
         "📁 <b>المستندات والوسائط:</b>\n"
-        "• أرسل أي ملف (<code>.pdf</code>, <code>.md</code>, <code>.py</code>, <code>.json</code>) مع تعليق تريده وسيقوم Jules بفحصه وتقديم الشرح والحلول البرمجية داخل المحادثة.\n"
+        "• أرسل أي ملف (<code>.pdf</code>, <code>.md</code>, <code>.py</code>, <code>.json</code>) مع تعليق تريده وسيقوم المساعد بفحصه وتقديم الشرح والحلول البرمجية داخل المحادثة.\n"
         "• أرسل صورة أو مخطط هيكلي وسأقوم بتحليله وتفسير محتواه برمجياً.\n"
     )
 
@@ -122,7 +122,7 @@ async def model_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     current_model = user.get("selected_model", "flash") if user else "flash"
 
     text = (
-        "⚡ <b>اختر نموذج الذكاء الاصطناعي لوكيل Jules:</b>\n\n"
+        "⚡ <b>اختر وضع ونموذج الذكاء الاصطناعي المطلوب:</b>\n\n"
         f"1. ⚡ <b>{config.MODEL_FLASH_NAME}:</b>\n"
         "• استجابة فورية فائقة السرعة، ممتاز للمهام اليومية والأسئلة السريعة والتحليلات الخفيفة.\n\n"
         f"2. 🧠 <b>{config.MODEL_PRO_NAME}:</b>\n"
@@ -197,7 +197,7 @@ async def apikey_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         status = "🟢 لديك مفتاح خاص محفوظ" if has_key else "⚪ أنت تستخدم مفتاح البوت الافتراضي"
 
         await update.message.reply_text(
-            f"🔑 <b>إدارة مفتاح Google Gemini API:</b>\n"
+            f"🔑 <b>إدارة مفتاح API الخاص بك:</b>\n"
             f"الحالة الحالية: {status}\n\n"
             "• لتعيين مفتاحك الخاص:\n"
             "<code>/apikey YOUR_API_KEY_HERE</code>\n\n"
@@ -217,7 +217,7 @@ async def apikey_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             await update.message.reply_text("❌ يبدو أن المفتاح المدخل غير صالح (قصير جداً).")
             return
         await UserRepository.update_custom_api_key(user_id, arg)
-        await update.message.reply_text("✅ تم حفظ مفتاح Google API الخاص بك بنجاح! سيتم توجيه جميع طلباتك باستخدامه.")
+        await update.message.reply_text("✅ تم حفظ مفتاح API الخاص بك بنجاح! سيتم توجيه جميع طلباتك باستخدامه.")
 
 
 async def compose_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
