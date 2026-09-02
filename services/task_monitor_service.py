@@ -205,23 +205,40 @@ class TaskMonitorService:
 
     @staticmethod
     def parse_patch_files(unidiff_text: str) -> Dict[str, str]:
-        """Parses a unified diff patch to extract modified/added file contents."""
+        """Parses a unified diff patch to extract modified/added file contents cleanly."""
         files = {}
         cur_file = None
         cur_lines = []
+        in_hunk = False
+
         for line in unidiff_text.splitlines():
-            if line.startswith("+++ b/"):
+            if line.startswith("diff --git "):
                 if cur_file and cur_lines:
                     files[cur_file] = "\n".join(cur_lines)
-                cur_file = line.replace("+++ b/", "").strip()
+                cur_file = None
                 cur_lines = []
-            elif cur_file:
+                in_hunk = False
+                continue
+
+            if line.startswith("+++ b/"):
+                cur_file = line[6:].strip()
+                cur_lines = []
+                in_hunk = False
+                continue
+
+            if line.startswith("@@"):
+                in_hunk = True
+                continue
+
+            if in_hunk and cur_file:
                 if line.startswith("+") and not line.startswith("+++"):
                     cur_lines.append(line[1:])
-                elif not line.startswith("-") and not line.startswith("@@") and not line.startswith("diff"):
+                elif not line.startswith("-") and not line.startswith("\\"):
                     cur_lines.append(line)
+
         if cur_file and cur_lines:
             files[cur_file] = "\n".join(cur_lines)
+
         return files
 
     @classmethod
