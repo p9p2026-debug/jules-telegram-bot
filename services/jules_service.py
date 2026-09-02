@@ -150,7 +150,17 @@ class JulesService:
                 return "❌ **خطأ في مفتاح API:** المفتاح المستخدم غير صالح أو منتهي الصلاحية. يرجى التحقق منه وتحديثه عبر `/apikey`."
             elif "RESOURCE_EXHAUSTED" in err_msg or "429" in err_msg:
                 return "⏳ **تم تجاوز حد الطلبات (Rate Limit):** يرجى الانتظار دقيقة أو التبديل إلى النموذج السريع عبر `/model`."
-            return f"❌ **حدث خطأ أثناء معالجة طلبك:**\n`{html_escape(str(exc)[:300])}`"
+            elif "PERMISSION_DENIED" in err_msg or "403" in err_msg:
+                if "has not been used in project" in err_msg or "disabled" in err_msg.lower():
+                    return (
+                        "❌ **الخدمة غير مفعلة على مشروع مفتاح الـ API (403):**\n\n"
+                        "المشروع المرتبط بالمفتاح يحتاج إلى تفعيل خدمة الـ Generative Language.\n"
+                        "• **الحل الأسرع:** اضغط على زر (Enable / تفعيل) من الرابط التالي:\n"
+                        "https://console.developers.google.com/apis/api/generativelanguage.googleapis.com/overview?project=306419110271\n\n"
+                        "• أو استخرج مفتاحاً جاهزاً ومفعلاً مجاناً من [Google AI Studio](https://aistudio.google.com/app/apikey) وحدّثه عبر `/apikey`."
+                    )
+                return "❌ **خطأ في الصلاحيات (403):** مفتاح الـ API لا يملك صلاحية استخدام هذا النموذج."
+            return f"❌ **حدث خطأ فني أثناء معالجة الطلب.** يرجى المحاولة مرة أخرى أو مراجعة المشرف."
 
 
 def html_escape(text: str) -> str:
