@@ -327,6 +327,45 @@ async def apikey_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         await update.message.reply_text("✅ تم حفظ مفتاح API الخاص بك بنجاح! سيتم توجيه جميع طلباتك باستخدامه.")
 
 
+async def github_token_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handles /github: manages GitHub Personal Access Token for auto-downloading files directly to Telegram."""
+    user_id = update.effective_user.id
+    if not context.args:
+        curr_token = await SettingsRepository.get_setting(f"github_token:{user_id}", "")
+        has_token = bool(curr_token)
+        status = "🟢 لديك توكن GitHub محفوظ" if has_token else "⚪ لا يوجد توكن مسجل حالياً"
+
+        await update.message.reply_text(
+            "🐙 <b>إدارة توكن GitHub (لتحميل الملفات إلى تيليجرام مباشرة):</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            f"الحالة الحالية: {status}\n\n"
+            "💡 <b>فائدة التوكن:</b>\n"
+            "يتيح للبوت سحب أي ملف ينشئه جولز (مثل مستندات Word، ملفات الكود، الصور، المضغوطة) "
+            "وإرسالها مباشرة كملف مرفق في شات تيليجرام دون الحاجة لفتح GitHub نهائياً!\n\n"
+            "• لحفظ التوكن:\n"
+            "<code>/github YOUR_GITHUB_TOKEN</code>\n\n"
+            "• لمسح التوكن:\n"
+            "<code>/github clear</code>",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    arg = context.args[0].strip()
+    if arg.lower() == "clear":
+        await SettingsRepository.set_setting(f"github_token:{user_id}", "")
+        await update.message.reply_text("✅ تم مسح توكن GitHub بنجاح.")
+    else:
+        if len(arg) < 15:
+            await update.message.reply_text("❌ يبدو أن التوكن المدخل غير صالح (قصير جداً).")
+            return
+        await SettingsRepository.set_setting(f"github_token:{user_id}", arg)
+        await update.message.reply_text(
+            "✅ <b>تم حفظ توكن GitHub بنجاح!</b>\n"
+            "سيقوم البوت الآن بسحب الملفات الناتجة عن مهام جولز وتوصيلها إليك مباشرة في الشات بصيغتها الأصلية!",
+            parse_mode=ParseMode.HTML
+        )
+
+
 async def repos_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handles /repos: lists connected GitHub repositories from Jules API."""
     user_id = update.effective_user.id
@@ -682,7 +721,8 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                 status_message_id=status_msg.message_id,
                 session_name=session_name,
                 repo_name=repo_display,
-                prompt=text
+                prompt=text,
+                user_id=update.effective_user.id
             )
         except Exception as exc:
             logger.exception("Error launching Jules API session: %s", exc)
@@ -1030,6 +1070,8 @@ def register_user_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("repos", repos_command))
     app.add_handler(CommandHandler("sources", repos_command))
     app.add_handler(CommandHandler("tasks", tasks_command))
+    app.add_handler(CommandHandler("github", github_token_command))
+    app.add_handler(CommandHandler("gh", github_token_command))
 
     # Compose mode commands
     app.add_handler(CommandHandler("compose", compose_command))
