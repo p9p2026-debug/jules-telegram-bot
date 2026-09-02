@@ -28,7 +28,8 @@ from utils.keyboards import (
     get_main_keyboard,
     get_model_switch_keyboard,
     get_sessions_keyboard,
-    get_sources_keyboard
+    get_sources_keyboard,
+    get_apikey_dashboard_keyboard
 )
 
 logger = logging.getLogger(__name__)
@@ -199,39 +200,130 @@ async def sessions_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 
 async def apikey_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handles /apikey command: manages personal Google API keys."""
+    """Handles /apikey command: manages personal Google Studio & Jules API keys with full interactive UI."""
     user_id = update.effective_user.id
     allowed, reason = await PermissionService.check_access(user_id, config.FEATURE_CUSTOM_KEYS)
     if not allowed:
         await update.message.reply_text(reason)
         return
 
+    # If no arguments provided, show interactive dashboard with inline buttons
     if not context.args:
         user = await UserRepository.get_by_id(user_id)
-        has_key = bool(user and user.get("custom_api_key"))
-        status = "🟢 لديك مفتاح خاص محفوظ" if has_key else "⚪ أنت تستخدم مفتاح البوت الافتراضي"
+        custom_key = user.get("custom_api_key", "") if user else ""
+        gemini_key = await SettingsRepository.get_setting(f"user_gemini_key:{user_id}", "")
+        jules_key = await SettingsRepository.get_setting(f"user_jules_key:{user_id}", "")
 
+        # Auto-detect general custom key if specific keys aren't set
+        if custom_key:
+            if custom_key.startswith("AQ.") and not jules_key:
+                jules_key = custom_key
+            elif custom_key.startswith("AIza") and not gemini_key:
+                gemini_key = custom_key
+
+        has_gemini = bool(gemini_key)
+        has_jules = bool(jules_key)
+
+        gemini_txt = f"🟢 <b>مسجل</b> (<code>...{gemini_key[-6:]}</code>)" if has_gemini else "⚪ <i>غير مسجل (يستخدم الافتراضي)</i>"
+        jules_txt = f"🟢 <b>مسجل</b> (<code>...{jules_key[-6:]}</code>)" if has_jules else "⚪ <i>غير مسجل (يستخدم الافتراضي)</i>"
+
+        model_choice = user.get("selected_model", config.MODEL_CHOICE_FLASH) if user else config.MODEL_CHOICE_FLASH
+        if model_choice == config.MODEL_CHOICE_PRO:
+            model_display = config.MODEL_PRO_NAME
+        elif model_choice == config.MODEL_CHOICE_AGENT:
+            model_display = config.MODEL_AGENT_NAME
+        else:
+            model_display = config.MODEL_FLASH_NAME
+
+        is_admin = PermissionService.is_admin(user_id)
+        kb = get_apikey_dashboard_keyboard(has_gemini, has_jules, is_admin)
+
+        text = (
+            "🔑 <b>لوحة إدارة مفاتيح API والنماذج:</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            f"⚡ <b>مفتاح الدردشة الفورية (Gemini Studio):</b>\n{gemini_txt}\n\n"
+            f"🛠️ <b>مفتاح الوكيل البرمجي (Jules Agent):</b>\n{jules_txt}\n\n"
+            f"🎯 <b>النموذج / الوضع النشط حالياً:</b>\n<code>{model_display}</code>\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            "💡 <b>طرق الإدخال السريعة:</b>\n"
+            "• اضغط على الأزرار بالأسفل لإدخال المفتاح تفاعلياً.\n"
+            "• أو أرسل المفتاح مباشرة: <code>/apikey YOUR_KEY</code> وسيتعرف البوت تلقائياً على نوعه!\n"
+            "• أو حدد نوعه صراحة: <code>/apikey jules &lt;key&gt;</code> أو <code>/apikey studio &lt;key&gt;</code>"
+        )
+
+        await update.message.reply_text(text, parse_mode=ParseMode.HTML, reply_markup=kb)
+        return
+
+    # Arguments provided: handle clear, explicit type, or auto-detect
+    first_arg = context.args[0].strip()
+
+    if first_arg.lower() == "clear":
+        await UserRepository.update_custom_api_key(user_id, None)
+        await SettingsRepository.set_setting(f"user_gemini_key:{user_id}", "")
+        await SettingsRepository.set_setting(f"user_jules_key:{user_id}", "")
+        await update.message.reply_text("✅ تم مسح جميع مفاتيحك الخاصة بنجاح. يتم الآن استخدام المفاتيح الافتراضية للبوت.")
+        return
+
+    # Check for explicit prefix: /apikey jules <key> or /apikey studio <key>
+    if first_arg.lower() in ["jules", "agent"] and len(context.args) > 1:
+        key_val = context.args[1].strip()
+        await SettingsRepository.set_setting(f"user_jules_key:{user_id}", key_val)
+        await UserRepository.update_custom_api_key(user_id, key_val)
+        await UserRepository.update_model(user_id, config.MODEL_CHOICE_AGENT)
         await update.message.reply_text(
-            f"🔑 <b>إدارة مفتاح API الخاص بك:</b>\n"
-            f"الحالة الحالية: {status}\n\n"
-            "• لتعيين مفتاحك الخاص:\n"
-            "<code>/apikey YOUR_API_KEY_HERE</code>\n\n"
-            "• لمسح مفتاحك الخاص والعودة للافتراضي:\n"
-            "<code>/apikey clear</code>",
+            f"✅ <b>تم تعيين مفتاح Google Jules بنجاح!</b>\n"
+            f"• تم تحويل الوضع النشط إلى: <b>{config.MODEL_AGENT_NAME}</b>\n"
+            "يمكنك استعراض مستودعاتك عبر <code>/repos</code> والبدء في تنفيذ المهام.",
             parse_mode=ParseMode.HTML
         )
         return
 
-    arg = context.args[0].strip()
-    if arg.lower() == "clear":
-        await UserRepository.update_custom_api_key(user_id, None)
-        await update.message.reply_text("✅ تم مسح مفتاحك الخاص بنجاح. يتم الآن استخدام المفتاح الافتراضي للبوت.")
+    if first_arg.lower() in ["gemini", "studio", "flash", "pro"] and len(context.args) > 1:
+        key_val = context.args[1].strip()
+        await SettingsRepository.set_setting(f"user_gemini_key:{user_id}", key_val)
+        await UserRepository.update_custom_api_key(user_id, key_val)
+        await UserRepository.update_model(user_id, config.MODEL_CHOICE_FLASH)
+        await update.message.reply_text(
+            f"✅ <b>تم تعيين مفتاح Google AI Studio بنجاح!</b>\n"
+            f"• تم تفعيل وضع الشات السريع: <b>{config.MODEL_FLASH_NAME}</b>\n"
+            "أرسل استفساراتك وأسئلتك في الشات مباشرة.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
+    # Single argument provided: Auto-detect type
+    key_val = first_arg
+    if len(key_val) < 15:
+        await update.message.reply_text("❌ يبدو أن المفتاح المدخل غير صالح (قصير جداً).")
+        return
+
+    if key_val.startswith("AQ."):
+        # Detected as Jules API Key
+        await SettingsRepository.set_setting(f"user_jules_key:{user_id}", key_val)
+        await UserRepository.update_custom_api_key(user_id, key_val)
+        await UserRepository.update_model(user_id, config.MODEL_CHOICE_AGENT)
+        await update.message.reply_text(
+            "✨ <b>تم التعرف تلقائياً على المفتاح:</b>\n"
+            "🛠️ <b>مفتاح Google Jules الرسمي المستقل (Autonomous Agent)</b>\n\n"
+            f"• تم حفظ المفتاح وتفعيل وضع: <b>{config.MODEL_AGENT_NAME}</b>\n"
+            "استخدم <code>/repos</code> لاختيار المستودع والبدء في تنفيذ المهام البرمجية.",
+            parse_mode=ParseMode.HTML
+        )
+    elif key_val.startswith("AIza"):
+        # Detected as Google AI Studio Key
+        await SettingsRepository.set_setting(f"user_gemini_key:{user_id}", key_val)
+        await UserRepository.update_custom_api_key(user_id, key_val)
+        await UserRepository.update_model(user_id, config.MODEL_CHOICE_FLASH)
+        await update.message.reply_text(
+            "✨ <b>تم التعرف تلقائياً على المفتاح:</b>\n"
+            "⚡ <b>مفتاح Google AI Studio للدردشة اللحظية</b>\n\n"
+            f"• تم حفظ المفتاح وتفعيل: <b>{config.MODEL_FLASH_NAME}</b>\n"
+            "أرسل استفساراتك أو طلباتك في الشات وسيجيبك المساعد فوراً!",
+            parse_mode=ParseMode.HTML
+        )
     else:
-        # Validate key roughly
-        if len(arg) < 15:
-            await update.message.reply_text("❌ يبدو أن المفتاح المدخل غير صالح (قصير جداً).")
-            return
-        await UserRepository.update_custom_api_key(user_id, arg)
+        # General API Key
+        await UserRepository.update_custom_api_key(user_id, key_val)
         await update.message.reply_text("✅ تم حفظ مفتاح API الخاص بك بنجاح! سيتم توجيه جميع طلباتك باستخدامه.")
 
 
@@ -425,6 +517,52 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         from handlers.admin_handlers import admin_command
         await admin_command(update, context)
         return
+
+    # Check if user is actively entering an API key via interactive button prompt
+    if "awaiting_api_key" in context.user_data:
+        key_type = context.user_data.pop("awaiting_api_key")
+        key_val = text.strip()
+        if len(key_val) < 15:
+            await update.message.reply_text("❌ يبدو أن المفتاح المدخل غير صالح (قصير جداً).")
+            return
+
+        if key_type == "jules":
+            await SettingsRepository.set_setting(f"user_jules_key:{user.id}", key_val)
+            await UserRepository.update_custom_api_key(user.id, key_val)
+            await UserRepository.update_model(user.id, config.MODEL_CHOICE_AGENT)
+            await update.message.reply_text(
+                "✅ <b>تم حفظ وتفعيل مفتاح Google Jules الرسمي بنجاح!</b>\n"
+                f"• تم تحويل الوضع إلى: <b>{config.MODEL_AGENT_NAME}</b>\n\n"
+                "يمكنك استعراض مستودعاتك عبر <code>/repos</code> أو إرسال طلباتك البرمجية في الشات مباشرة.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+        else:
+            await SettingsRepository.set_setting(f"user_gemini_key:{user.id}", key_val)
+            await UserRepository.update_custom_api_key(user.id, key_val)
+            await UserRepository.update_model(user.id, config.MODEL_CHOICE_FLASH)
+            await update.message.reply_text(
+                "✅ <b>تم حفظ وتفعيل مفتاح Google AI Studio بنجاح!</b>\n"
+                f"• تم تفعيل وضع الشات الفوري: <b>{config.MODEL_FLASH_NAME}</b>\n\n"
+                "أرسل استفساراتك وأسئلتك في الشات مباشرة وسأجيبك فوراً.",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
+    if context.user_data.get("awaiting_sys_key"):
+        context.user_data.pop("awaiting_sys_key", None)
+        if PermissionService.is_admin(user.id):
+            key_val = text.strip()
+            if key_val.startswith("AQ."):
+                await SettingsRepository.set_setting("system_jules_key", key_val)
+                await SettingsRepository.set_setting("system_api_key", key_val)
+                target = "Jules API"
+            else:
+                await SettingsRepository.set_setting("system_gemini_key", key_val)
+                await SettingsRepository.set_setting("system_api_key", key_val)
+                target = "Google AI Studio"
+            await update.message.reply_text(f"👑 <b>تم تعيين المفتاح العام لكافة مستخدمي البوت بنجاح ({target})!</b>", parse_mode=ParseMode.HTML)
+            return
 
     # Check if user is actively in /compose mode
     if ComposeStore.is_composing(user.id):
@@ -719,6 +857,52 @@ async def user_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
                 extra_tip = "\n⚠️ لم تحدد مستودعاً بعد! استخدم الأمر <code>/repos</code> لاختيار المستودع."
 
         await query.message.reply_text(f"✅ تم تغيير الوضع بنجاح إلى:\n<b>{display_name}</b>{extra_tip}", parse_mode=ParseMode.HTML)
+
+    elif data.startswith("user:set_key_prompt:"):
+        key_type = data.split(":")[2]  # gemini or jules
+        context.user_data["awaiting_api_key"] = key_type
+        if key_type == "jules":
+            await query.message.reply_text(
+                "🛠️ <b>إعداد مفتاح Google Jules الرسمي:</b>\n"
+                "أرسل الآن مفتاح Jules الخاص بك في الشات (يبدأ بـ <code>AQ.Ab...</code>):\n\n"
+                "💡 يتم استخراجه من: https://jules.google.com/settings",
+                parse_mode=ParseMode.HTML
+            )
+        else:
+            await query.message.reply_text(
+                "⚡ <b>إعداد مفتاح Google AI Studio:</b>\n"
+                "أرسل الآن مفتاح Studio الخاص بك في الشات (يبدأ بـ <code>AIzaSy...</code>):\n\n"
+                "💡 يتم استخراجه مجاناً من: https://aistudio.google.com/app/apikey",
+                parse_mode=ParseMode.HTML
+            )
+
+    elif data == "user:open_model_menu":
+        user = await UserRepository.get_by_id(user_id)
+        current_model = user.get("selected_model", config.MODEL_CHOICE_FLASH) if user else config.MODEL_CHOICE_FLASH
+        try:
+            await query.edit_message_reply_markup(reply_markup=get_model_switch_keyboard(current_model))
+        except Exception:
+            pass
+
+    elif data == "user:clear_keys":
+        await UserRepository.update_custom_api_key(user_id, None)
+        await SettingsRepository.set_setting(f"user_gemini_key:{user_id}", "")
+        await SettingsRepository.set_setting(f"user_jules_key:{user_id}", "")
+        try:
+            kb = get_apikey_dashboard_keyboard(has_gemini=False, has_jules=False, is_admin=PermissionService.is_admin(user_id))
+            await query.edit_message_reply_markup(reply_markup=kb)
+        except Exception:
+            pass
+        await query.message.reply_text("🗑️ تم مسح جميع مفاتيحك الخاصة والعودة للافتراضي بنجاح.")
+
+    elif data == "admin:set_sys_key_prompt":
+        if PermissionService.is_admin(user_id):
+            context.user_data["awaiting_sys_key"] = True
+            await query.message.reply_text(
+                "👑 <b>تعيين المفتاح العام للبوت (Admin):</b>\n"
+                "أرسل الآن المفتاح الجديد في الشات، وسيتعرف البوت تلقائياً على نوعه ويطبقه على كافة المستخدمين.",
+                parse_mode=ParseMode.HTML
+            )
 
     elif data.startswith("user:sel_src:"):
         source_name = data.replace("user:sel_src:", "")

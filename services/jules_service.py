@@ -18,13 +18,43 @@ class JulesService:
     """Service to interact with Google's Gemini / Jules agent models."""
 
     @staticmethod
-    async def get_effective_api_key(user_id: int) -> Optional[str]:
+    async def get_effective_api_key(user_id: int, key_type: str = "any") -> Optional[str]:
         """
         Determines the appropriate API key for a user:
-        1. User's custom API key (if set and allowed)
-        2. System API key override in database
-        3. Environment variable GEMINI_API_KEY
+        1. User's specific custom key (user_gemini_key or user_jules_key)
+        2. User's general custom API key
+        3. System override in database
+        4. Environment variables (JULES_API_KEY, GEMINI_API_KEY)
         """
+        if key_type == "jules":
+            ukey = await SettingsRepository.get_setting(f"user_jules_key:{user_id}", "")
+            if ukey:
+                return ukey.strip()
+            skey = await SettingsRepository.get_setting("system_jules_key", "")
+            if skey:
+                return skey.strip()
+            if config.JULES_API_KEY:
+                return config.JULES_API_KEY.strip()
+
+        elif key_type == "gemini":
+            ukey = await SettingsRepository.get_setting(f"user_gemini_key:{user_id}", "")
+            if ukey:
+                return ukey.strip()
+            skey = await SettingsRepository.get_setting("system_gemini_key", "")
+            if skey:
+                return skey.strip()
+            if config.GEMINI_API_KEY:
+                return config.GEMINI_API_KEY.strip()
+
+        # Fallback resolution across sources:
+        user_jules = await SettingsRepository.get_setting(f"user_jules_key:{user_id}", "")
+        if user_jules:
+            return user_jules.strip()
+
+        user_gemini = await SettingsRepository.get_setting(f"user_gemini_key:{user_id}", "")
+        if user_gemini:
+            return user_gemini.strip()
+
         user = await UserRepository.get_by_id(user_id)
         if user and user.get("custom_api_key"):
             return user["custom_api_key"].strip()
@@ -32,6 +62,9 @@ class JulesService:
         db_sys_key = await SettingsRepository.get_setting("system_api_key", "")
         if db_sys_key and db_sys_key.strip():
             return db_sys_key.strip()
+
+        if config.JULES_API_KEY and config.JULES_API_KEY.strip():
+            return config.JULES_API_KEY.strip()
 
         if config.GEMINI_API_KEY and config.GEMINI_API_KEY.strip():
             return config.GEMINI_API_KEY.strip()

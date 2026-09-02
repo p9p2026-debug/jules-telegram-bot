@@ -52,6 +52,34 @@ def get_model_switch_keyboard(current_model: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(keyboard)
 
 
+def get_apikey_dashboard_keyboard(has_gemini: bool, has_jules: bool, is_admin: bool = False) -> InlineKeyboardMarkup:
+    """Inline keyboard for API Key & Model management directly from Telegram."""
+    gemini_status = "✅ مسجل" if has_gemini else "➕ تعيين"
+    jules_status = "✅ مسجل" if has_jules else "➕ تعيين"
+
+    keyboard = [
+        [
+            InlineKeyboardButton(f"⚡ مفتاح Studio ({gemini_status})", callback_data="user:set_key_prompt:gemini"),
+            InlineKeyboardButton(f"🛠️ مفتاح Jules ({jules_status})", callback_data="user:set_key_prompt:jules"),
+        ],
+        [
+            InlineKeyboardButton("🎯 تحديد النموذج / الوكيل النشط", callback_data="user:open_model_menu"),
+        ],
+    ]
+
+    if is_admin:
+        keyboard.append([
+            InlineKeyboardButton("👑 تعيين مفتاح عام لكافة مستخدمي البوت", callback_data="admin:set_sys_key_prompt")
+        ])
+
+    keyboard.append([
+        InlineKeyboardButton("🗑️ مسح مفاتيحي الخاصة", callback_data="user:clear_keys"),
+        InlineKeyboardButton("❌ إغلاق", callback_data="user:close")
+    ])
+
+    return InlineKeyboardMarkup(keyboard)
+
+
 def get_sources_keyboard(sources: List[dict], selected_source: str = "") -> InlineKeyboardMarkup:
     """Inline keyboard listing connected GitHub repositories from Jules API."""
     keyboard = []
