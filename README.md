@@ -2,6 +2,12 @@
 
 مستودع برمجي متكامل واحترافي لبوت تيليجرام ذكي مدعوم بوكيل الذكاء الاصطناعي البرمجي **Jules by Google** ونماذج **Gemini (Gemini 3.1 Pro & Gemini 3.6 Flash)**، مبني وفق أحدث معايير الهيكلية النظيفة (Clean Architecture)، ومجهز للنشر الفوري بنقرة واحدة (**One-Click Deployment**) على منصة **Render** والمزامنة المباشرة مع **GitHub**.
 
+<p align="center">
+  <a href="https://render.com/deploy?repo=https://github.com/p9p2026-debug/jules-telegram-bot">
+    <img src="https://render.com/images/deploy-to-render-button.svg" alt="Deploy to Render" height="38">
+  </a>
+</p>
+
 ---
 
 ## 🌟 أبرز مميزات المشروع
