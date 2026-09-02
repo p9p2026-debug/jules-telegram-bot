@@ -21,27 +21,63 @@ def get_main_keyboard(is_admin: bool = False) -> ReplyKeyboardMarkup:
 
 
 def get_model_switch_keyboard(current_model: str) -> InlineKeyboardMarkup:
-    """Inline keyboard for switching between Gemini 3.6 Flash and Gemini 3.1 Pro."""
-    is_flash = (current_model == "flash")
-    is_pro = (current_model == "pro")
+    """Inline keyboard for switching between Flash, Pro, and Autonomous Repo Agent."""
+    is_flash = (current_model == config.MODEL_CHOICE_FLASH)
+    is_pro = (current_model == config.MODEL_CHOICE_PRO)
+    is_agent = (current_model == config.MODEL_CHOICE_AGENT)
 
     keyboard = [
         [
             InlineKeyboardButton(
-                text=f"{'✅ ' if is_flash else ''}⚡ {config.MODEL_FLASH_NAME}",
+                text=f"{'✅ ' if is_flash else ''}{config.MODEL_FLASH_NAME}",
                 callback_data="user:set_model:flash"
             )
         ],
         [
             InlineKeyboardButton(
-                text=f"{'✅ ' if is_pro else ''}🧠 {config.MODEL_PRO_NAME}",
+                text=f"{'✅ ' if is_pro else ''}{config.MODEL_PRO_NAME}",
                 callback_data="user:set_model:pro"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=f"{'✅ ' if is_agent else ''}{config.MODEL_AGENT_NAME}",
+                callback_data="user:set_model:agent"
             )
         ],
         [
             InlineKeyboardButton(text="❌ إغلاق", callback_data="user:close")
         ]
     ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_sources_keyboard(sources: List[dict], selected_source: str = "") -> InlineKeyboardMarkup:
+    """Inline keyboard listing connected GitHub repositories from Jules API."""
+    keyboard = []
+
+    for src in sources:
+        raw_name = src.get("name", "")
+        # format: sources/github-username-repo
+        display_name = raw_name.replace("sources/github-", "").replace("sources/", "")
+        gh_info = src.get("githubRepo", {})
+        if gh_info.get("owner") and gh_info.get("repo"):
+            display_name = f"{gh_info['owner']}/{gh_info['repo']}"
+
+        is_selected = (raw_name == selected_source)
+        prefix = "⭐ " if is_selected else "📁 "
+
+        keyboard.append([
+            InlineKeyboardButton(
+                text=f"{prefix}{display_name}",
+                callback_data=f"user:sel_src:{raw_name}"
+            )
+        ])
+
+    keyboard.append([
+        InlineKeyboardButton(text="🔄 تحديث القائمة", callback_data="user:refresh_sources"),
+        InlineKeyboardButton(text="❌ إغلاق", callback_data="user:close")
+    ])
     return InlineKeyboardMarkup(keyboard)
 
 

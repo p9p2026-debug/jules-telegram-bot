@@ -32,17 +32,23 @@ def _parse_admin_ids(raw_ids: str) -> List[int]:
 
 ADMIN_IDS: List[int] = _parse_admin_ids(os.getenv("ADMIN_IDS", ""))
 
-# Google Gemini / Jules Agent API Configuration
+# Google Gemini & Jules Agent API Configuration
 GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "").strip()
+JULES_API_KEY: str = (os.getenv("JULES_API_KEY", "") or GEMINI_API_KEY).strip()
+JULES_API_BASE_URL: str = os.getenv("JULES_API_BASE_URL", "https://jules.googleapis.com/v1alpha").rstrip("/")
 
 # Model Definitions & Aliases
-# You can customize the exact model IDs via environment variables
+MODEL_CHOICE_FLASH: str = "flash"
+MODEL_CHOICE_PRO: str = "pro"
+MODEL_CHOICE_AGENT: str = "agent"
+
 MODEL_PRO_ID: str = os.getenv("MODEL_PRO_ID", "gemini-2.5-pro")
 MODEL_FLASH_ID: str = os.getenv("MODEL_FLASH_ID", "gemini-2.5-flash")
 
 # Human-readable display names for Telegram UI (White-labeled)
 MODEL_PRO_NAME: str = os.getenv("MODEL_PRO_NAME", "🧠 النموذج المتعمق (Deep Logic)")
 MODEL_FLASH_NAME: str = os.getenv("MODEL_FLASH_NAME", "⚡ النموذج السريع (Fast Model)")
+MODEL_AGENT_NAME: str = os.getenv("MODEL_AGENT_NAME", "🛠️ مهندس المستودعات المستقل (Autonomous Agent)")
 
 # Database Configuration
 DATABASE_PATH: str = os.getenv("DATABASE_PATH", str(DEFAULT_DATA_DIR / "jules_bot.db")).strip()
@@ -82,6 +88,7 @@ FEATURE_UPLOAD_FILES = "upload_files"
 FEATURE_SEND_IMAGES = "send_images"
 FEATURE_CREATE_SESSIONS = "create_sessions"
 FEATURE_CUSTOM_KEYS = "custom_keys"
+FEATURE_AUTONOMOUS_AGENT = "autonomous_agent"
 
 ALL_FEATURES = [
     FEATURE_SWITCH_MODEL,
@@ -90,6 +97,7 @@ ALL_FEATURES = [
     FEATURE_SEND_IMAGES,
     FEATURE_CREATE_SESSIONS,
     FEATURE_CUSTOM_KEYS,
+    FEATURE_AUTONOMOUS_AGENT,
 ]
 
 FEATURE_NAMES = {
@@ -99,4 +107,5 @@ FEATURE_NAMES = {
     FEATURE_SEND_IMAGES: "إرسال وتحليل الصور",
     FEATURE_CREATE_SESSIONS: "إنشاء جلسات متعددة",
     FEATURE_CUSTOM_KEYS: "استخدام مفاتيح API خاصة",
+    FEATURE_AUTONOMOUS_AGENT: "مهام المستودعات التلقائية (PRs)",
 }

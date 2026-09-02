@@ -2,6 +2,8 @@
 from .format_service import FormatService
 from .permission_service import PermissionService
 from .jules_service import JulesService
+from .jules_api_client import JulesApiClient, JulesApiException
+from .task_monitor_service import TaskMonitorService
 from .rich_service import (
     RichService,
     ComposeSession,
@@ -17,6 +19,9 @@ __all__ = [
     "FormatService",
     "PermissionService",
     "JulesService",
+    "JulesApiClient",
+    "JulesApiException",
+    "TaskMonitorService",
     "RichService",
     "ComposeSession",
     "ComposeStore",
