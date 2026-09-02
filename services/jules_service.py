@@ -73,10 +73,30 @@ class JulesService:
 
     @staticmethod
     def resolve_model_id(model_choice: str) -> str:
-        """Maps user model choice ('flash' or 'pro') to the configured Google model ID."""
-        if model_choice.lower() == "pro":
-            return config.MODEL_PRO_ID
-        return config.MODEL_FLASH_ID
+        """Maps user model choice to exact Google Gemini model ID."""
+        choice = (model_choice or "3.6").lower().strip()
+
+        mapping = {
+            "3.6": "gemini-3.6-flash",
+            "3.6-flash": "gemini-3.6-flash",
+            "flash": "gemini-3.6-flash",
+            "3.7": "gemini-3.7-flash",
+            "3.7-flash": "gemini-3.7-flash",
+            "3.7-pro": "gemini-3.7-pro",
+            "pro": "gemini-3.7-pro",
+            "3.8": "gemini-3.8-flash",
+            "3.8-flash": "gemini-3.8-flash",
+            "3.8-pro": "gemini-3.8-pro",
+            "agent": "gemini-3.6-flash",  # Jules native agent 3.6 Flash
+        }
+
+        if choice in mapping:
+            return mapping[choice]
+
+        if choice.startswith("gemini-"):
+            return choice
+
+        return f"gemini-{choice}"
 
     @classmethod
     async def generate_response(

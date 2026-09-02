@@ -21,31 +21,48 @@ def get_main_keyboard(is_admin: bool = False) -> ReplyKeyboardMarkup:
 
 
 def get_model_switch_keyboard(current_model: str) -> InlineKeyboardMarkup:
-    """Inline keyboard for switching between Flash, Pro, and Autonomous Repo Agent."""
-    is_flash = (current_model == config.MODEL_CHOICE_FLASH)
-    is_pro = (current_model == config.MODEL_CHOICE_PRO)
-    is_agent = (current_model == config.MODEL_CHOICE_AGENT)
+    """Inline keyboard for switching between 3.6, 3.7, 3.8, and Autonomous Repo Agent."""
+    m = (current_model or "").lower().strip()
+
+    def _mark(val: str, label: str) -> str:
+        is_selected = (m == val or m == val.replace("gemini-", "") or (val == "3.6-flash" and m in ["flash", "3.6"]))
+        return f"✅ {label}" if is_selected else label
 
     keyboard = [
         [
             InlineKeyboardButton(
-                text=f"{'✅ ' if is_flash else ''}{config.MODEL_FLASH_NAME}",
-                callback_data="user:set_model:flash"
+                text=_mark("3.6-flash", "⚡ Gemini 3.6 Flash (Studio / Jules)"),
+                callback_data="user:set_model:3.6-flash"
             )
         ],
         [
             InlineKeyboardButton(
-                text=f"{'✅ ' if is_pro else ''}{config.MODEL_PRO_NAME}",
-                callback_data="user:set_model:pro"
+                text=_mark("3.7-flash", "⚡ Gemini 3.7 Flash"),
+                callback_data="user:set_model:3.7-flash"
+            ),
+            InlineKeyboardButton(
+                text=_mark("3.7-pro", "🧠 Gemini 3.7 Pro"),
+                callback_data="user:set_model:3.7-pro"
             )
         ],
         [
             InlineKeyboardButton(
-                text=f"{'✅ ' if is_agent else ''}{config.MODEL_AGENT_NAME}",
+                text=_mark("3.8-flash", "⚡ Gemini 3.8 Flash"),
+                callback_data="user:set_model:3.8-flash"
+            ),
+            InlineKeyboardButton(
+                text=_mark("3.8-pro", "🧠 Gemini 3.8 Pro"),
+                callback_data="user:set_model:3.8-pro"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text=_mark("agent", "🛠️ مهندس المستودعات المستقل (Jules 3.6)"),
                 callback_data="user:set_model:agent"
             )
         ],
         [
+            InlineKeyboardButton(text="✏️ كتابة اسم نموذج آخر", callback_data="user:custom_model_prompt"),
             InlineKeyboardButton(text="❌ إغلاق", callback_data="user:close")
         ]
     ]

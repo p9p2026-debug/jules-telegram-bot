@@ -125,24 +125,48 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
 
 async def model_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handles /model command: presents model selection inline keyboard."""
+    """Handles /model command: presents model selection inline keyboard or sets model directly."""
     user_id = update.effective_user.id
     allowed, reason = await PermissionService.check_access(user_id, config.FEATURE_SWITCH_MODEL)
     if not allowed:
         await update.message.reply_text(reason)
         return
 
+    # Direct model setting via command argument: /model 3.6, /model 3.7, /model 3.8, /model agent
+    if context.args:
+        requested = context.args[0].strip().lower()
+        resolved_id = JulesService.resolve_model_id(requested)
+        model_target = "agent" if requested in ["agent", "jules"] else requested
+        await UserRepository.update_model(user_id, model_target)
+
+        extra_note = ""
+        if model_target == "agent":
+            extra_note = "\n🛠️ تم تفعيل وكيل Jules المستقل (3.6 Flash). استخدم <code>/repos</code> لاختيار المستودع."
+
+        await update.message.reply_text(
+            f"✅ <b>تم ضبط وتفعيل النموذج المطلوب بنجاح!</b>\n"
+            f"• المعرف المعتمد: <code>{resolved_id}</code>{extra_note}\n\n"
+            "يمكنك إرسال رسائلك واستفساراتك الآن باستخدام هذا النموذج.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
     user = await UserRepository.get_by_id(user_id)
     current_model = user.get("selected_model", config.MODEL_CHOICE_FLASH) if user else config.MODEL_CHOICE_FLASH
+    resolved_current = JulesService.resolve_model_id(current_model)
 
     text = (
-        "⚡ <b>اختر وضع ونموذج الذكاء الاصطناعي المطلوب:</b>\n\n"
-        f"1. ⚡ <b>{config.MODEL_FLASH_NAME}:</b>\n"
-        "• استجابة فورية فائقة السرعة، ممتاز للمهام اليومية والأسئلة السريعة والتحليلات الخفيفة.\n\n"
-        f"2. 🧠 <b>{config.MODEL_PRO_NAME}:</b>\n"
-        "• عمق تحليلي استثنائي، تفكير منطقي متقدم لحل أعقد المعضلات المعمارية والبرمجية.\n\n"
-        f"3. 🛠️ <b>{config.MODEL_AGENT_NAME}:</b>\n"
-        "• وكيل مستقل يتصل بمستودعات GitHub، يستنسخ المشروع، ينفذ الأكواد، ويفتح Pull Request تلقائياً!"
+        "🎯 <b>اختر نموذج الذكاء الاصطناعي المطلوب بدقة:</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        f"• <b>النموذج النشط حالياً:</b> <code>{resolved_current}</code>\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "⚡ <b>Gemini 3.6 Flash:</b> فائق السرعة، وهو النموذج الأساسي المعتمد لوكيل Jules وللشات السريع.\n\n"
+        "⚡ <b>Gemini 3.7 Flash / Pro:</b> جيل متطور بقدرات تفكير متقدمة وسرعة استجابة فائقة.\n\n"
+        "🧠 <b>Gemini 3.8 Flash / Pro:</b> أحدث إصدارات التفكير العميق للأكواد والتحليلات الضخمة.\n\n"
+        "🛠️ <b>مهندس المستودعات المستقل:</b> وكيل Jules المباشر (3.6 Flash) لربط GitHub وفتح الـ PRs.\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "💡 <i>يمكنك أيضاً التحديد السريع مباشرة:</i>\n"
+        "<code>/model 3.6</code> أو <code>/model 3.7</code> أو <code>/model 3.8</code> أو <code>/model agent</code>"
     )
 
     await update.message.reply_text(
@@ -647,6 +671,21 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             await update.message.reply_text(f"👑 <b>تم تعيين المفتاح العام لكافة مستخدمي البوت بنجاح ({target})!</b>", parse_mode=ParseMode.HTML)
             return
 
+    # Check if user is entering a custom model name
+    if context.user_data.get("awaiting_custom_model"):
+        context.user_data.pop("awaiting_custom_model", None)
+        model_input = text.strip().lower()
+        resolved_id = JulesService.resolve_model_id(model_input)
+        model_target = "agent" if model_input in ["agent", "jules"] else model_input
+        await UserRepository.update_model(user.id, model_target)
+        await update.message.reply_text(
+            f"✅ <b>تم ضبط النموذج المخصص بنجاح!</b>\n"
+            f"• المعرف المعتمد: <code>{resolved_id}</code>\n\n"
+            "يمكنك البدء في إرسال استفساراتك وأسئلتك الآن.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
     # Check if user is actively in /compose mode
     if ComposeStore.is_composing(user.id):
         if text.startswith("/"):
@@ -906,7 +945,7 @@ async def user_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
             return
 
         # If selecting pro, check use_pro permission
-        if model_target == config.MODEL_CHOICE_PRO:
+        if "pro" in model_target:
             allowed_pro, reason_pro = await PermissionService.check_access(user_id, config.FEATURE_USE_PRO)
             if not allowed_pro:
                 await query.answer(reason_pro, show_alert=True)
@@ -917,14 +956,8 @@ async def user_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
                 await query.answer(reason_agent, show_alert=True)
                 return
 
+        resolved_id = JulesService.resolve_model_id(model_target)
         await UserRepository.update_model(user_id, model_target)
-
-        if model_target == config.MODEL_CHOICE_PRO:
-            display_name = config.MODEL_PRO_NAME
-        elif model_target == config.MODEL_CHOICE_AGENT:
-            display_name = config.MODEL_AGENT_NAME
-        else:
-            display_name = config.MODEL_FLASH_NAME
 
         try:
             await query.edit_message_reply_markup(reply_markup=get_model_switch_keyboard(model_target))
@@ -940,7 +973,19 @@ async def user_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
             else:
                 extra_tip = "\n⚠️ لم تحدد مستودعاً بعد! استخدم الأمر <code>/repos</code> لاختيار المستودع."
 
-        await query.message.reply_text(f"✅ تم تغيير الوضع بنجاح إلى:\n<b>{display_name}</b>{extra_tip}", parse_mode=ParseMode.HTML)
+        await query.message.reply_text(
+            f"✅ <b>تم تفعيل النموذج بنجاح:</b>\n"
+            f"🎯 <code>{resolved_id}</code>{extra_tip}",
+            parse_mode=ParseMode.HTML
+        )
+
+    elif data == "user:custom_model_prompt":
+        context.user_data["awaiting_custom_model"] = True
+        await query.message.reply_text(
+            "✏️ <b>إدخال اسم نموذج مخصص:</b>\n"
+            "أرسل الآن اسم أو رقم النموذج في الشات (مثال: <code>3.6</code> أو <code>3.7-flash</code> أو <code>3.8-pro</code> أو <code>gemini-3.7-pro</code>):",
+            parse_mode=ParseMode.HTML
+        )
 
     elif data.startswith("user:set_key_prompt:"):
         key_type = data.split(":")[2]  # gemini or jules
