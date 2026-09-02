@@ -78,7 +78,7 @@ class JulesService:
         Guarantees full canonical names: gemini-3.1-pro, gemini-3.1-flash,
         gemini-3.5-flash, gemini-3.6-flash, gemini-3.7-flash, gemini-3.8-flash.
         """
-        choice = (model_choice or "gemini-3.7-flash").lower().strip()
+        choice = (model_choice or "gemini-3.6-flash").lower().strip()
 
         # Exact canonical Google models
         canonical_models = {

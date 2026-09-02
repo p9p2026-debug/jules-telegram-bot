@@ -154,7 +154,7 @@ async def model_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         return
 
     user = await UserRepository.get_by_id(user_id)
-    current_model = user.get("selected_model", "gemini-3.7-flash") if user else "gemini-3.7-flash"
+    current_model = user.get("selected_model", "gemini-3.6-flash") if user else "gemini-3.6-flash"
     resolved_current = "🛠️ وكيل المستودعات (Jules Agent)" if current_model == "agent" else JulesService.resolve_model_id(current_model)
 
     text = (
@@ -162,8 +162,8 @@ async def model_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         "━━━━━━━━━━━━━━━━━━━━━\n"
         f"• <b>النموذج النشط حالياً:</b> <code>{resolved_current}</code>\n"
         "━━━━━━━━━━━━━━━━━━━━━\n"
-        "🛠️ <b>نماذج Jules API الرسمية (حصرياً):</b>\n"
-        "• <code>gemini-3.7-flash</code>\n"
+        "🛠️ <b>نماذج Jules API الرسمية (حصرياً - نموذجان فقط):</b>\n"
+        "• <code>gemini-3.6-flash</code>\n"
         "• <code>gemini-3.1-pro</code>\n\n"
         "⚡ <b>نماذج Google AI Studio:</b>\n"
         "• <code>gemini-3.1-pro</code> (النموذج الوحيد Pro)\n"
@@ -174,7 +174,7 @@ async def model_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         "• <code>gemini-3.8-flash</code>\n"
         "━━━━━━━━━━━━━━━━━━━━━\n"
         "💡 <i>اختر النموذج من الأزرار بالأسفل، أو اكتب اسمه بالكامل:</i>\n"
-        "<code>/model gemini-3.5-flash</code>"
+        "<code>/model gemini-3.6-flash</code>"
     )
 
     await update.message.reply_text(

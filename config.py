@@ -44,11 +44,11 @@ MODEL_CHOICE_AGENT: str = "agent"
 
 # Exact Canonical Google Model Definitions
 MODEL_PRO_ID: str = os.getenv("MODEL_PRO_ID", "gemini-3.1-pro")
-MODEL_FLASH_ID: str = os.getenv("MODEL_FLASH_ID", "gemini-3.7-flash")
+MODEL_FLASH_ID: str = os.getenv("MODEL_FLASH_ID", "gemini-3.6-flash")
 
 # Human-readable display names for Telegram UI (White-labeled)
 MODEL_PRO_NAME: str = os.getenv("MODEL_PRO_NAME", "🧠 gemini-3.1-pro")
-MODEL_FLASH_NAME: str = os.getenv("MODEL_FLASH_NAME", "⚡ gemini-3.7-flash")
+MODEL_FLASH_NAME: str = os.getenv("MODEL_FLASH_NAME", "⚡ gemini-3.6-flash")
 MODEL_AGENT_NAME: str = os.getenv("MODEL_AGENT_NAME", "🛠️ مهندس المستودعات المستقل (Jules Agent)")
 
 # Database Configuration

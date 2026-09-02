@@ -33,14 +33,14 @@ def get_model_switch_keyboard(current_model: str) -> InlineKeyboardMarkup:
         return f"✅ {full_id}" if m == full_id else full_id
 
     keyboard = [
-        # Jules Official Models
+        # Jules Official Models (Exactly gemini-3.6-flash and gemini-3.1-pro)
         [
             InlineKeyboardButton(text="── 🛠️ نماذج Jules API الرسمية ──", callback_data="user:noop")
         ],
         [
             InlineKeyboardButton(
-                text=_mark("gemini-3.7-flash"),
-                callback_data="user:set_model:gemini-3.7-flash"
+                text=_mark("gemini-3.6-flash"),
+                callback_data="user:set_model:gemini-3.6-flash"
             ),
             InlineKeyboardButton(
                 text=_mark("gemini-3.1-pro"),

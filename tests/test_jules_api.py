@@ -11,22 +11,22 @@ from utils.keyboards import get_model_switch_keyboard, get_sources_keyboard
 class TestJulesApiClient(unittest.TestCase):
 
     def test_model_switch_keyboard(self):
-        kb = get_model_switch_keyboard("gemini-3.7-flash")
+        kb = get_model_switch_keyboard("gemini-3.6-flash")
         all_buttons = [btn for row in kb.inline_keyboard for btn in row]
         callbacks = [btn.callback_data for btn in all_buttons]
 
         # Check canonical Jules & Studio models
-        self.assertIn("user:set_model:gemini-3.7-flash", callbacks)
+        self.assertIn("user:set_model:gemini-3.6-flash", callbacks)
         self.assertIn("user:set_model:gemini-3.1-pro", callbacks)
         self.assertIn("user:set_model:gemini-3.1-flash", callbacks)
         self.assertIn("user:set_model:gemini-3.5-flash", callbacks)
-        self.assertIn("user:set_model:gemini-3.6-flash", callbacks)
+        self.assertIn("user:set_model:gemini-3.7-flash", callbacks)
         self.assertIn("user:set_model:gemini-3.8-flash", callbacks)
         self.assertIn("user:set_model:agent", callbacks)
         self.assertIn("user:close", callbacks)
 
         # Check that active model has checkmark
-        active_btn = [btn for btn in all_buttons if btn.callback_data == "user:set_model:gemini-3.7-flash"][0]
+        active_btn = [btn for btn in all_buttons if btn.callback_data == "user:set_model:gemini-3.6-flash"][0]
         self.assertTrue(active_btn.text.startswith("✅"))
 
     def test_sources_keyboard(self):
