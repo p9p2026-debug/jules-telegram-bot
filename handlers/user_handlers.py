@@ -6,7 +6,7 @@ incoming text messages, photos, and programming documents (PDF/MD/Code).
 
 import io
 import logging
-from telegram import Update
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ChatAction, ParseMode
 from telegram.ext import (
     Application,
@@ -660,6 +660,28 @@ async def cancel_compose_command(update: Update, context: ContextTypes.DEFAULT_T
         await update.message.reply_text("ℹ️ لست في وضع تحرير المنشور حالياً.")
 
 
+def build_jules_prompt_with_delivery(user_prompt: str, chat_id: int, bot_token: str) -> str:
+    """
+    Augments the user prompt with explicit instructions on how to deliver generated files
+    and screenshots into Telegram since the user cannot access the local sandbox directory.
+    """
+    if not bot_token:
+        bot_token = config.BOT_TOKEN
+
+    instructions = (
+        f"\n\n[DELIVERY DIRECTIVE FOR TELEGRAM:\n"
+        f"You are executing this task on behalf of a user connected via Telegram (Chat ID: {chat_id}). "
+        f"The user DOES NOT have access to your local sandbox filesystem or the web interface files sidebar.\n"
+        f"Whenever you take screenshots, capture browser web pages, or generate files (such as .png, .jpg, .pdf, .zip, etc.):\n"
+        f"1. You MUST send them directly into the user's Telegram chat using curl:\n"
+        f"   - For screenshots/photos: curl -s -X POST 'https://api.telegram.org/bot{bot_token}/sendPhoto' -F chat_id='{chat_id}' -F photo=@<image_path>\n"
+        f"   - For files/documents: curl -s -X POST 'https://api.telegram.org/bot{bot_token}/sendDocument' -F chat_id='{chat_id}' -F document=@<file_path>\n"
+        f"2. You can also upload each file via curl to https://tmpfiles.org/api/v1/upload (or https://catbox.moe/user/api.php) and include the resulting download link in your message so our Telegram bot can download and present it.\n"
+        f"NEVER tell the user 'I saved the files in the project directory' without sending them or providing download links!]"
+    )
+    return f"{user_prompt}{instructions}"
+
+
 async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handles general incoming text messages from users."""
     user = update.effective_user
@@ -822,8 +844,9 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                 "⏳ جاري متابعة الرد وتنفيذ التعديلات...",
                 parse_mode=ParseMode.HTML
             )
+            jules_full_prompt = build_jules_prompt_with_delivery(ai_prompt, update.effective_chat.id, context.bot.token)
             try:
-                await JulesApiClient.send_message(active_sess, ai_prompt, api_key=effective_api_key)
+                await JulesApiClient.send_message(active_sess, jules_full_prompt, api_key=effective_api_key)
                 repo_label = active_source.replace("sources/github-", "").replace("sources/", "") if active_source else "متابعة المهمة"
                 await TaskMonitorService.start_monitoring(
                     bot=context.bot,
@@ -856,15 +879,16 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         )
 
         try:
+            jules_full_prompt = build_jules_prompt_with_delivery(ai_prompt, update.effective_chat.id, context.bot.token)
             if active_source and active_source != "none":
                 session_obj = await JulesApiClient.create_session(
                     source=active_source,
-                    prompt=ai_prompt,
+                    prompt=jules_full_prompt,
                     api_key=effective_api_key
                 )
             else:
                 session_obj = await JulesApiClient.create_chat_session(
-                    prompt=ai_prompt,
+                    prompt=jules_full_prompt,
                     api_key=effective_api_key
                 )
 
@@ -1040,15 +1064,16 @@ async def document_message_handler(update: Update, context: ContextTypes.DEFAULT
         )
 
         try:
+            jules_full_prompt = build_jules_prompt_with_delivery(effective_prompt, update.effective_chat.id, context.bot.token)
             if active_source and active_source != "none":
                 session_obj = await JulesApiClient.create_session(
                     source=active_source,
-                    prompt=effective_prompt,
+                    prompt=jules_full_prompt,
                     api_key=effective_api_key
                 )
             else:
                 session_obj = await JulesApiClient.create_chat_session(
-                    prompt=effective_prompt,
+                    prompt=jules_full_prompt,
                     api_key=effective_api_key
                 )
 
