@@ -185,18 +185,19 @@ async def model_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 
 async def new_session_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handles /new command: creates a new session."""
+    """Handles /new command: creates a new session and clears active task."""
     user_id = update.effective_user.id
     allowed, reason = await PermissionService.check_access(user_id, config.FEATURE_CREATE_SESSIONS)
     if not allowed:
         await update.message.reply_text(reason)
         return
 
+    await SettingsRepository.set_setting(f"active_jules_sess:{user_id}", "")
     session_id = await SessionRepository.create_session(user_id)
     await update.message.reply_text(
-        f"✨ <b>تم بدء جلسة محادثة جديدة بنجاح!</b>\n"
+        f"✨ <b>تم بدء جلسة محادثة ومهمة جديدة بنجاح!</b>\n"
         f"🆔 معرف الجلسة: <code>{session_id}</code>\n"
-        "تم مسح السياق المؤقت للبدء في نقاش برمجي جديد ونظيف.",
+        "تم فك الارتباط بأي مهمة سابقة، ويمكنك الآن إرسال طلب جديد كلياً في الشات.",
         parse_mode=ParseMode.HTML
     )
 
@@ -519,8 +520,38 @@ async def tasks_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
             lines.append(f"{state_emoji} <b>#{name}</b>: {prompt}\n  الحالة: <code>{state_label}</code>{links_part}")
 
-        lines.append("━━━━━━━━━━━━━━━━━━━━━\n• لتشغيل مهمة جديدة، اختر المستودع عبر <code>/repos</code> ثم أرسل طلبك في الشات مباشرة.")
-        await update.message.reply_text("\n\n".join(lines), parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+        keyboard_buttons = []
+        for s in sessions[:5]:
+            if not isinstance(s, dict):
+                continue
+            name = str(s.get("name", "")).replace("sessions/", "")
+            prompt_short = str(s.get("prompt") or s.get("title") or "مهمة")[:20]
+            state = str(s.get("state", "UNKNOWN")).upper()
+
+            # Row with reply and fetch artifacts
+            keyboard_buttons.append([
+                InlineKeyboardButton(f"💬 رد #{name[:6]}: {prompt_short}", callback_data=f"jules:resume:{name}"),
+                InlineKeyboardButton(f"📥 مخرجات #{name[:6]}", callback_data=f"jules:fetch_artifacts:{name}")
+            ])
+
+            # If awaiting plan approval, add direct approval button
+            if "APPROVAL" in state or "WAITING" in state:
+                keyboard_buttons.append([
+                    InlineKeyboardButton(f"✅ اعتماد خطة #{name[:6]} فوراً", callback_data=f"jules:approve:{name}")
+                ])
+
+        keyboard_buttons.append([
+            InlineKeyboardButton("➕ بدء مهمة جديدة كلياً", callback_data="user:new_jules_task"),
+            InlineKeyboardButton("❌ إغلاق", callback_data="user:close")
+        ])
+
+        lines.append("━━━━━━━━━━━━━━━━━━━━━\n💡 <i>اضغط على '💬 رد' لأي مهمة لمتابعتها والتعليق عليها في الشات، أو '📥 مخرجات' لجلب صورها وملفاتها فوراً إلى تيليجرام.</i>")
+        await update.message.reply_text(
+            "\n\n".join(lines),
+            parse_mode=ParseMode.HTML,
+            reply_markup=InlineKeyboardMarkup(keyboard_buttons),
+            disable_web_page_preview=True
+        )
     except JulesApiException as j_err:
         await update.message.reply_text(f"⚠️ <b>خطأ في واجهة Jules API:</b>\n{j_err}", parse_mode=ParseMode.HTML)
     except Exception as exc:
@@ -732,17 +763,21 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     user_db = await UserRepository.get_or_create(user.id, user.username, user.first_name)
     selected_model = user_db.get("selected_model", config.MODEL_CHOICE_FLASH)
 
-    # If the user selected the Autonomous Agent mode:
-    if selected_model == config.MODEL_CHOICE_AGENT:
-        allowed_agent, reason_agent = await PermissionService.check_access(user.id, config.FEATURE_AUTONOMOUS_AGENT)
-        if not allowed_agent:
-            await update.message.reply_text(reason_agent)
-            return
+    # Check effective API key to route Jules tasks seamlessly
+    effective_api_key = await JulesService.get_effective_api_key(user.id, key_type="any")
+    is_jules_engine = (
+        (effective_api_key and effective_api_key.startswith("AQ."))
+        or selected_model == config.MODEL_CHOICE_AGENT
+        or (selected_model in ["gemini-3.6-flash", "gemini-3.1-pro"] and (not effective_api_key or not effective_api_key.startswith("AIza")))
+    )
 
+    if is_jules_engine:
         active_source = await SettingsRepository.get_setting(f"user_source:{user.id}", "")
-        if not active_source:
+
+        # If user explicitly chose Agent mode and has not selected a repo:
+        if selected_model == config.MODEL_CHOICE_AGENT and not active_source:
             try:
-                sources = await JulesApiClient.list_sources()
+                sources = await JulesApiClient.list_sources(api_key=effective_api_key)
                 if sources:
                     keyboard = get_sources_keyboard(sources, "")
                     await update.message.reply_text(
@@ -753,30 +788,73 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                     )
                 else:
                     await update.message.reply_text(
-                        "⚠️ <b>لم يتم العثور على مستودعات مرتبطة بحسابك في Jules</b>\n"
-                        "يرجى ربط مستودعك عبر https://jules.google.com ثم تشغيل الأمر <code>/repos</code>.",
+                        "⚠️ <b>لم يتم العثور على مستودعات متصلة في Jules</b>\n"
+                        "يمكنك استخدام Jules مباشرة دون مستودع عبر <code>/repos none</code>، أو ربط مستودعك عبر https://jules.google.com.",
                         parse_mode=ParseMode.HTML
                     )
             except Exception as exc:
                 await update.message.reply_text(f"⚠️ يرجى اختيار المستودع أولاً عبر <code>/repos</code> ({exc})")
             return
 
-        repo_display = active_source.replace("sources/github-", "").replace("sources/", "")
+        # Check if user is replying to an active ongoing Jules task
+        active_sess = await SettingsRepository.get_setting(f"active_jules_sess:{user.id}", "")
+        if active_sess:
+            clean_id = active_sess.replace("sessions/", "")
+            status_msg = await update.message.reply_text(
+                f"💬 <b>جاري إرسال تعليقك إلى Jules (مهمة #{clean_id[:8]})...</b>\n"
+                f"📝 <b>التعليق:</b> <i>{text[:100]}</i>\n"
+                "━━━━━━━━━━━━━━━━━━━━━\n"
+                "⏳ جاري متابعة الرد وتنفيذ التعديلات...",
+                parse_mode=ParseMode.HTML
+            )
+            try:
+                await JulesApiClient.send_message(active_sess, text, api_key=effective_api_key)
+                repo_label = active_source.replace("sources/github-", "").replace("sources/", "") if active_source else "متابعة المهمة"
+                await TaskMonitorService.start_monitoring(
+                    bot=context.bot,
+                    chat_id=update.effective_chat.id,
+                    status_message_id=status_msg.message_id,
+                    session_name=active_sess,
+                    repo_name=repo_label,
+                    prompt=text,
+                    user_id=user.id,
+                    api_key=effective_api_key
+                )
+                return
+            except Exception as exc:
+                logger.warning("Failed continuing active Jules session %s: %s", active_sess, exc)
+                await SettingsRepository.set_setting(f"active_jules_sess:{user.id}", "")
+                # fall through to create new session
+
+        # Start a new Jules task/session
+        repo_display = "بدون مستودع (مباشر)"
+        if active_source and active_source != "none":
+            repo_display = active_source.replace("sources/github-", "").replace("sources/", "")
+
         status_msg = await update.message.reply_text(
-            f"🚀 <b>جاري إرسال المهمة البرمجية لوكيل المستودعات...</b>\n"
-            f"📁 <b>المستودع:</b> <code>{repo_display}</code>\n"
+            f"🚀 <b>جاري إرسال المهمة إلى Jules...</b>\n"
+            f"📁 <b>البيئة:</b> <code>{repo_display}</code>\n"
             f"📝 <b>الطلب:</b> <i>{text[:100]}</i>\n"
             "━━━━━━━━━━━━━━━━━━━━━\n"
-            "⏳ جاري تشغيل بيئة سحابية واستنساخ المشروع...",
+            "⏳ جاري تجهيز بيئة العمل والبدء في التنفيذ...",
             parse_mode=ParseMode.HTML
         )
 
         try:
-            session_obj = await JulesApiClient.create_session(
-                source=active_source,
-                prompt=text
-            )
+            if active_source and active_source != "none":
+                session_obj = await JulesApiClient.create_session(
+                    source=active_source,
+                    prompt=text,
+                    api_key=effective_api_key
+                )
+            else:
+                session_obj = await JulesApiClient.create_chat_session(
+                    prompt=text,
+                    api_key=effective_api_key
+                )
+
             session_name = session_obj.get("name")
+            await SettingsRepository.set_setting(f"active_jules_sess:{user.id}", session_name)
             await TaskMonitorService.start_monitoring(
                 bot=context.bot,
                 chat_id=update.effective_chat.id,
@@ -784,13 +862,14 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                 session_name=session_name,
                 repo_name=repo_display,
                 prompt=text,
-                user_id=update.effective_user.id
+                user_id=user.id,
+                api_key=effective_api_key
             )
         except Exception as exc:
             logger.exception("Error launching Jules API session: %s", exc)
             await status_msg.edit_text(
-                f"❌ <b>فشل إطلاق مهمة الوكيل:</b>\n<code>{exc}</code>\n\n"
-                "يمكنك العودة لنموذج الدردشة السريع عبر <code>/model</code>.",
+                f"❌ <b>فشل إطلاق مهمة Jules:</b>\n<code>{exc}</code>\n\n"
+                "تحقق من صلاحية المفتاح عبر <code>/apikey</code>.",
                 parse_mode=ParseMode.HTML
             )
         return
@@ -919,56 +998,47 @@ async def document_message_handler(update: Update, context: ContextTypes.DEFAULT
     user_db = await UserRepository.get_or_create(user.id, user.username, user.first_name)
     selected_model = user_db.get("selected_model", config.MODEL_CHOICE_FLASH)
 
-    # If the user is in Autonomous Agent mode, launch repo coding task and monitor for generated files
-    if selected_model == config.MODEL_CHOICE_AGENT:
-        allowed_agent, reason_agent = await PermissionService.check_access(user.id, config.FEATURE_AUTONOMOUS_AGENT)
-        if not allowed_agent:
-            await update.message.reply_text(reason_agent)
-            return
+    effective_api_key = await JulesService.get_effective_api_key(user.id, key_type="any")
+    is_jules_engine = (
+        (effective_api_key and effective_api_key.startswith("AQ."))
+        or selected_model == config.MODEL_CHOICE_AGENT
+        or (selected_model in ["gemini-3.6-flash", "gemini-3.1-pro"] and (not effective_api_key or not effective_api_key.startswith("AIza")))
+    )
 
+    if is_jules_engine:
         active_source = await SettingsRepository.get_setting(f"user_source:{user.id}", "")
-        if not active_source:
-            try:
-                sources = await JulesApiClient.list_sources()
-                if sources:
-                    keyboard = get_sources_keyboard(sources, "")
-                    await update.message.reply_text(
-                        "⚠️ <b>يرجى تحديد المستودع المستهدف أولاً!</b>\n"
-                        "اختر المستودع الذي ترغب في أن ينفذ الوكيل المهمة عليه ويفتح Pull Request:",
-                        parse_mode=ParseMode.HTML,
-                        reply_markup=keyboard
-                    )
-                else:
-                    await update.message.reply_text(
-                        "⚠️ <b>لم يتم العثور على مستودعات مرتبطة بحسابك في Jules</b>\n"
-                        "يرجى ربط مستودعك عبر https://jules.google.com ثم تشغيل الأمر <code>/repos</code>.",
-                        parse_mode=ParseMode.HTML
-                    )
-            except Exception as exc:
-                await update.message.reply_text(f"⚠️ يرجى اختيار المستودع أولاً عبر <code>/repos</code> ({exc})")
-            return
+        repo_display = "بدون مستودع (مباشر)"
+        if active_source and active_source != "none":
+            repo_display = active_source.replace("sources/github-", "").replace("sources/", "")
 
-        repo_display = active_source.replace("sources/github-", "").replace("sources/", "")
-        caption_text = update.message.caption or f"تنفيذ المهمة بناءً على النموذج المرفق {file_name}"
+        caption_text = update.message.caption or f"تنفيذ المهمة بناءً على الملف {file_name}"
         effective_prompt = f"{caption_text}\n(الملف المرفق: {file_name})"
 
         status_msg = await update.message.reply_text(
-            f"🚀 <b>جاري إرسال المهمة البرمجية لوكيل المستودعات...</b>\n"
-            f"📁 <b>المستودع:</b> <code>{repo_display}</code>\n"
+            f"🚀 <b>جاري إرسال الملف والمهمة إلى Jules...</b>\n"
+            f"📁 <b>المستهدف:</b> <code>{repo_display}</code>\n"
             f"📄 <b>الملف:</b> <code>{file_name}</code>\n"
             f"📝 <b>الطلب:</b> <i>{caption_text[:100]}</i>\n"
-            "⏳ جاري إنشاء بيئة العمل وتوليد الملفات...",
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            "⏳ جاري تشغيل بيئة العمل وتوليد الملفات والمخرجات...",
             parse_mode=ParseMode.HTML
         )
 
         try:
-            api_key = await JulesService.get_effective_api_key(user.id, key_type="jules")
-            session_obj = await JulesApiClient.create_session(
-                source=active_source,
-                prompt=effective_prompt,
-                api_key=api_key
-            )
+            if active_source and active_source != "none":
+                session_obj = await JulesApiClient.create_session(
+                    source=active_source,
+                    prompt=effective_prompt,
+                    api_key=effective_api_key
+                )
+            else:
+                session_obj = await JulesApiClient.create_chat_session(
+                    prompt=effective_prompt,
+                    api_key=effective_api_key
+                )
+
             session_name = session_obj.get("name")
+            await SettingsRepository.set_setting(f"active_jules_sess:{user.id}", session_name)
             await TaskMonitorService.start_monitoring(
                 bot=context.bot,
                 chat_id=update.effective_chat.id,
@@ -976,14 +1046,13 @@ async def document_message_handler(update: Update, context: ContextTypes.DEFAULT
                 session_name=session_name,
                 repo_name=repo_display,
                 prompt=effective_prompt,
-                user_id=update.effective_user.id,
-                api_key=api_key
+                user_id=user.id,
+                api_key=effective_api_key
             )
         except Exception as exc:
             logger.exception("Error launching Jules API session for document: %s", exc)
             await status_msg.edit_text(
-                f"❌ <b>فشل إطلاق مهمة الوكيل:</b>\n<code>{exc}</code>\n\n"
-                "يمكنك العودة لنموذج الدردشة السريع عبر <code>/model</code>.",
+                f"❌ <b>فشل إطلاق مهمة Jules:</b>\n<code>{exc}</code>",
                 parse_mode=ParseMode.HTML
             )
         return
@@ -1211,17 +1280,84 @@ async def user_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
         except Exception:
             pass
 
-    elif data == "user:new_session":
-        allowed, reason = await PermissionService.check_access(user_id, config.FEATURE_CREATE_SESSIONS)
-        if not allowed:
-            await query.answer(reason, show_alert=True)
-            return
-
+    elif data == "user:new_session" or data == "user:new_jules_task":
+        await SettingsRepository.set_setting(f"active_jules_sess:{user_id}", "")
         session_id = await SessionRepository.create_session(user_id)
-        await query.edit_message_text(
-            f"✨ <b>تم بدء جلسة جديدة كلياً!</b>\n🆔 المعرف: <code>{session_id}</code>\nيمكنك البدء في إرسال استفساراتك الآن.",
+        await query.answer("تم بدء جلسة جديدة!")
+        await query.message.reply_text(
+            f"✨ <b>تم بدء مهمة وجلسة عمل جديدة كلياً!</b>\n"
+            "أرسل طلبك أو سؤالك في الشات وسيبدأ Jules بمهمة جديدة منفصلة.",
             parse_mode=ParseMode.HTML
         )
+
+    elif data.startswith("jules:approve:"):
+        clean_id = data.replace("jules:approve:", "")
+        api_key = await JulesService.get_effective_api_key(user_id, key_type="jules")
+        try:
+            await JulesApiClient.approve_plan(clean_id, api_key=api_key)
+            await query.answer("✅ تم اعتماد الخطة بنجاح!")
+            await query.message.reply_text(
+                f"✅ <b>تم اعتماد خطة المهمة #{clean_id[:8]}!</b>\n"
+                "جاري مواصلة العمل وسحب المخرجات والصور فور توليدها...",
+                parse_mode=ParseMode.HTML
+            )
+            await TaskMonitorService.start_monitoring(
+                bot=context.bot,
+                chat_id=update.effective_chat.id,
+                status_message_id=query.message.message_id,
+                session_name=f"sessions/{clean_id}",
+                repo_name="مهمة معتمدة",
+                prompt="تنفيذ الخطة المعتمدة",
+                user_id=user_id,
+                api_key=api_key
+            )
+        except Exception as exc:
+            logger.exception("Error approving plan: %s", exc)
+            await query.answer(f"فشل اعتماد الخطة: {exc}", show_alert=True)
+
+    elif data.startswith("jules:resume:") or data.startswith("jules:reply:"):
+        clean_id = data.split(":")[2]
+        await SettingsRepository.set_setting(f"active_jules_sess:{user_id}", f"sessions/{clean_id}")
+        await query.answer("تم الاتصال بالمهمة!")
+        await query.message.reply_text(
+            f"💬 <b>أنت الآن متصل بالمهمة #{clean_id}:</b>\n\n"
+            "أي تعليق أو رسالة ترسلها الآن في الشات ستصل إلى Jules في هذه المهمة مباشرة، وسيقوم بالرد عليك وتنفيذ التعديلات!",
+            parse_mode=ParseMode.HTML
+        )
+
+    elif data.startswith("jules:fetch_artifacts:"):
+        clean_id = data.replace("jules:fetch_artifacts:", "")
+        api_key = await JulesService.get_effective_api_key(user_id, key_type="jules")
+        await query.answer("جاري سحب المخرجات والملفات...")
+        try:
+            activities = await JulesApiClient.list_activities(f"sessions/{clean_id}", api_key=api_key)
+            session_data = await JulesApiClient.get_session(f"sessions/{clean_id}", api_key=api_key)
+            raw_outputs = session_data.get("outputs", [])
+            pr_url = None
+            if isinstance(raw_outputs, list):
+                for item in raw_outputs:
+                    if isinstance(item, dict) and "pullRequest" in item:
+                        pr_url = item["pullRequest"].get("url") or item["pullRequest"].get("htmlUrl")
+                        if pr_url:
+                            break
+            elif isinstance(raw_outputs, dict):
+                pr_info = raw_outputs.get("pullRequest", {})
+                pr_url = pr_info.get("url") or pr_info.get("htmlUrl")
+
+            await TaskMonitorService.deliver_task_artifacts(
+                bot=context.bot,
+                chat_id=update.effective_chat.id,
+                user_id=user_id,
+                pr_url=pr_url,
+                activities=activities
+            )
+            await query.message.reply_text(
+                f"✅ تم فحص وإرسال كافة مخرجات وسكرينات المهمة <b>#{clean_id}</b> إلى المحادثة أعلاه.",
+                parse_mode=ParseMode.HTML
+            )
+        except Exception as exc:
+            logger.exception("Error fetching artifacts: %s", exc)
+            await query.message.reply_text(f"⚠️ تعذر سحب مخرجات المهمة: {exc}")
 
 
 def register_user_handlers(app: Application) -> None:
@@ -1247,7 +1383,7 @@ def register_user_handlers(app: Application) -> None:
     app.add_handler(CommandHandler("done", done_compose_command))
     app.add_handler(CommandHandler("cancel", cancel_compose_command))
 
-    app.add_handler(CallbackQueryHandler(user_callback_handler, pattern=r"^user:"))
+    app.add_handler(CallbackQueryHandler(user_callback_handler, pattern=r"^(user|jules):"))
 
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, text_message_handler))
     app.add_handler(MessageHandler(filters.PHOTO, photo_message_handler))

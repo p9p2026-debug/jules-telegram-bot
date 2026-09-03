@@ -66,6 +66,8 @@ class TaskMonitorService:
     ) -> None:
         """Internal polling loop."""
         last_rendered_text = ""
+        delivered_activity_ids = set()
+        clean_id = session_name.replace("sessions/", "")
 
         for _ in range(max_iterations):
             await asyncio.sleep(interval_seconds)
@@ -74,6 +76,50 @@ class TaskMonitorService:
                 session_data = await JulesApiClient.get_session(session_name, api_key)
                 state = session_data.get("state", "RUNNING").upper()
                 activities = await JulesApiClient.list_activities(session_name, api_key)
+
+                # Real-time streaming of new activities (messages and screenshots)
+                for act in activities:
+                    act_id = act.get("id") or act.get("name")
+                    if act_id and act_id in delivered_activity_ids:
+                        continue
+
+                    # Deliver live agent messages
+                    if act.get("originator") == "agent" and "agentMessaged" in act:
+                        msg = act["agentMessaged"].get("agentMessage")
+                        if msg:
+                            try:
+                                await bot.send_message(
+                                    chat_id=chat_id,
+                                    text=f"💬 <b>Jules:</b>\n\n{msg}",
+                                    parse_mode=ParseMode.HTML
+                                )
+                                if act_id:
+                                    delivered_activity_ids.add(act_id)
+                            except Exception as exc:
+                                logger.warning("Failed sending live agent message: %s", exc)
+
+                    # Deliver live media (screenshots captured by Jules browser)
+                    for art in act.get("artifacts", []):
+                        if "media" in art:
+                            m = art["media"]
+                            b64_data = m.get("data")
+                            if b64_data:
+                                try:
+                                    import base64
+                                    img_bytes = base64.b64decode(b64_data)
+                                    bio = io.BytesIO(img_bytes)
+                                    bio.name = "screenshot.png"
+                                    cap = m.get("title") or "🖼️ <b>لقطة شاشة من Jules</b>"
+                                    await bot.send_photo(
+                                        chat_id=chat_id,
+                                        photo=bio,
+                                        caption=cap,
+                                        parse_mode=ParseMode.HTML
+                                    )
+                                    if act_id:
+                                        delivered_activity_ids.add(act_id)
+                                except Exception as exc:
+                                    logger.warning("Failed sending live screenshot: %s", exc)
 
                 # Check if Pull Request was opened (outputs is a list or dict)
                 raw_outputs = session_data.get("outputs", [])
@@ -89,7 +135,7 @@ class TaskMonitorService:
                     pr_url = pr_info.get("url") or pr_info.get("htmlUrl")
 
                 # Extract latest activity notes
-                latest_activity = "جاري استنساخ وفحص المستودع..."
+                latest_activity = "جاري تنفيذ الخطوات والتحليل..."
                 if activities:
                     last_act = activities[-1]
                     latest_activity = (
@@ -101,30 +147,76 @@ class TaskMonitorService:
                         or latest_activity
                     )
 
+                # Check Plan Approval State
+                is_awaiting_plan = (
+                    state in ["AWAITING_USER_INPUT", "AWAITING_PLAN_APPROVAL", "PLAN_APPROVAL"]
+                    or any("planGenerated" in a and not a.get("planApproved") for a in activities)
+                )
+
+                if is_awaiting_plan and state not in ["COMPLETED", "SUCCEEDED"]:
+                    plan_desc = ""
+                    for a in activities:
+                        if "planGenerated" in a:
+                            p = a["planGenerated"]
+                            plan_desc = p.get("plan") or p.get("description") or p.get("title") or ""
+
+                    plan_text = (
+                        "📋 <b>خطة عمل مقترحة من Jules:</b>\n"
+                        "━━━━━━━━━━━━━━━━━━━━━\n"
+                        f"📝 <b>الطلب:</b> <i>{prompt}</i>\n\n"
+                        f"{plan_desc or 'قام Jules بوضع خطة عمل وينتظر اعتمادك للبدء في تنفيذها.'}\n"
+                        "━━━━━━━━━━━━━━━━━━━━━\n"
+                        "<i>اضغط على 'اعتماد وتنفيذ' للمتابعة، أو اكتب تعليقك لتعديل الخطة:</i>"
+                    )
+                    buttons = [
+                        [
+                            InlineKeyboardButton("✅ اعتماد وتنفيذ الخطة", callback_data=f"jules:approve:{clean_id}"),
+                            InlineKeyboardButton("💬 تعديل أو تعليق", callback_data=f"jules:reply:{clean_id}")
+                        ],
+                        [
+                            InlineKeyboardButton("🌐 عرض في منصة Jules", url=f"https://jules.google.com/session/{clean_id}")
+                        ]
+                    ]
+                    if plan_text != last_rendered_text:
+                        last_rendered_text = plan_text
+                        try:
+                            await bot.edit_message_text(
+                                chat_id=chat_id,
+                                message_id=message_id,
+                                text=plan_text,
+                                parse_mode=ParseMode.HTML,
+                                reply_markup=InlineKeyboardMarkup(buttons)
+                            )
+                        except Exception:
+                            pass
+                    continue
+
                 # Terminal: COMPLETED
                 if state in ["COMPLETED", "SUCCEEDED"] or pr_url:
-                    clean_id = session_name.replace("sessions/", "")
+                    # Save active session so user can reply to continue in the same task
+                    await SettingsRepository.set_setting(f"active_jules_sess:{user_id}", session_name)
+
                     final_text = (
-                        "🎉 <b>تم إنجاز المهمة البرمجية بنجاح!</b>\n"
+                        "🎉 <b>تم إنجاز المهمة بنجاح بواسطة Jules!</b>\n"
                         "━━━━━━━━━━━━━━━━━━━━━\n"
-                        f"📁 <b>المستودع:</b> <code>{repo_name}</code>\n"
-                        f"📝 <b>الطلب:</b> <i>{prompt}</i>\n\n"
-                        "✨ <b>خطوات الإنجاز:</b>\n"
-                        "• [✅] فحص وتحليل بنية المشروع\n"
-                        "• [✅] وضع خطة التعديل البرمجي\n"
-                        "• [✅] تطبيق التعديلات وتوليد الملفات\n"
-                        "• [✅] إنشاء الفرع وفتح Pull Request\n"
+                        f"📁 <b>المستهدف:</b> <code>{repo_name or 'مهمة مباشرة'}</code>\n"
+                        f"📝 <b>الطلب:</b> <i>{prompt}</i>\n"
                         "━━━━━━━━━━━━━━━━━━━━━\n"
-                        "📦 <i>جاري سحب وإرسال الملفات الناتجة إلى الشات فوراً...</i>\n"
+                        "💡 <b>يمكنك الرد على هذه الرسالة أو كتابة أي تعليق للاستمرار في نفس المهمة.</b>"
                     )
 
                     buttons = []
                     if pr_url:
-                        final_text += f"\n🔗 <b>رابط الـ Pull Request:</b>\n{pr_url}\n"
+                        final_text += f"\n\n🔗 <b>رابط الـ Pull Request:</b>\n{pr_url}"
                         buttons.append([
                             InlineKeyboardButton("🚀 الـ Pull Request", url=pr_url),
                             InlineKeyboardButton("📥 تصفح الملفات على GitHub", url=f"{pr_url}/files")
                         ])
+
+                    buttons.append([
+                        InlineKeyboardButton("💬 الرد على هذه المهمة", callback_data=f"jules:reply:{clean_id}"),
+                        InlineKeyboardButton("➕ بدء مهمة جديدة", callback_data="user:new_jules_task")
+                    ])
 
                     sess_url = session_data.get("url") or f"https://jules.google.com/session/{clean_id}"
                     buttons.append([InlineKeyboardButton("🌐 عرض الجلسة في منصة Jules", url=sess_url)])
@@ -148,7 +240,8 @@ class TaskMonitorService:
                         chat_id=chat_id,
                         user_id=user_id,
                         pr_url=pr_url,
-                        activities=activities
+                        activities=activities,
+                        already_delivered_ids=delivered_activity_ids
                     )
                     return
 
@@ -158,17 +251,19 @@ class TaskMonitorService:
                     fail_text = (
                         "❌ <b>تعذر استكمال المهمة البرمجية</b>\n"
                         "━━━━━━━━━━━━━━━━━━━━━\n"
-                        f"📁 <b>المستودع:</b> <code>{repo_name}</code>\n"
+                        f"📁 <b>المستهدف:</b> <code>{repo_name or 'مهمة مباشرة'}</code>\n"
                         f"⚠️ <b>السبب:</b> {error_msg}\n"
                         "━━━━━━━━━━━━━━━━━━━━━\n"
-                        "يرجى مراجعة إعدادات المستودع وصلاحيات الحساب."
+                        "يمكنك المحاولة مجدداً أو مراجعة التفاصيل عبر الرابط أدناه."
                     )
+                    buttons = [[InlineKeyboardButton("🌐 عرض الجلسة في منصة Jules", url=f"https://jules.google.com/session/{clean_id}")]]
                     try:
                         await bot.edit_message_text(
                             chat_id=chat_id,
                             message_id=message_id,
                             text=fail_text,
-                            parse_mode=ParseMode.HTML
+                            parse_mode=ParseMode.HTML,
+                            reply_markup=InlineKeyboardMarkup(buttons)
                         )
                     except Exception:
                         pass
@@ -176,13 +271,13 @@ class TaskMonitorService:
 
                 # In-Progress state update
                 progress_text = (
-                    "🛠️ <b>جاري تنفيذ المهمة البرمجية آلياً...</b>\n"
+                    "🛠️ <b>جاري تنفيذ المهمة عبر Jules...</b>\n"
                     "━━━━━━━━━━━━━━━━━━━━━\n"
-                    f"📁 <b>المستودع:</b> <code>{repo_name}</code>\n"
+                    f"📁 <b>المستهدف:</b> <code>{repo_name or 'مهمة مباشرة'}</code>\n"
                     f"📝 <b>الطلب:</b> <i>{prompt}</i>\n"
                     f"🔄 <b>النشاط الحالي:</b> {latest_activity}\n"
                     "━━━━━━━━━━━━━━━━━━━━━\n"
-                    "<i>تتحدث هذه الرسالة تلقائياً مع تقدم العمل...</i>"
+                    "<i>تتحدث هذه الرسالة تلقائياً مع تقدم العمل وسحب المخرجات...</i>"
                 )
 
                 if progress_text != last_rendered_text:
@@ -248,15 +343,22 @@ class TaskMonitorService:
         chat_id: int,
         user_id: int,
         pr_url: Optional[str],
-        activities: list
+        activities: list,
+        already_delivered_ids: Optional[set] = None
     ) -> None:
         """
         Fetches and delivers files, code, and reports produced by Jules directly into the Telegram chat.
+        Avoids duplicate delivery for activities that were already sent live during monitoring.
         """
         delivered_count = 0
+        delivered_ids = already_delivered_ids or set()
 
         # 1. Check activities for agent messages or explanations
         for act in activities:
+            act_id = act.get("id") or act.get("name")
+            if act_id and act_id in delivered_ids:
+                continue
+
             if act.get("originator") == "agent":
                 if "agentMessaged" in act:
                     msg = act["agentMessaged"].get("agentMessage")
@@ -264,18 +366,21 @@ class TaskMonitorService:
                         try:
                             await bot.send_message(
                                 chat_id=chat_id,
-                                text=f"💬 <b>تقرير من وكيل Jules:</b>\n\n{msg}",
+                                text=f"💬 <b>تقرير من Jules:</b>\n\n{msg}",
                                 parse_mode=ParseMode.HTML
                             )
+                            if act_id:
+                                delivered_ids.add(act_id)
                         except Exception:
                             pass
 
         # 2. Extract media and code patches from activities
         for act in activities:
+            act_id = act.get("id") or act.get("name")
             artifacts = act.get("artifacts", [])
             for art in artifacts:
                 # Check media (e.g. UI screenshots)
-                if "media" in art:
+                if "media" in art and (not act_id or act_id not in delivered_ids):
                     import base64
                     m = art["media"]
                     b64_data = m.get("data")
@@ -283,13 +388,16 @@ class TaskMonitorService:
                         try:
                             img_bytes = base64.b64decode(b64_data)
                             bio = io.BytesIO(img_bytes)
-                            bio.name = "verification_screenshot.png"
+                            bio.name = "screenshot.png"
+                            cap = m.get("title") or "🖼️ <b>معاينة / لقطة شاشة من Jules</b>"
                             await bot.send_photo(
                                 chat_id=chat_id,
                                 photo=bio,
-                                caption="🖼️ <b>معاينة من وكيل Jules</b>",
+                                caption=cap,
                                 parse_mode=ParseMode.HTML
                             )
+                            if act_id:
+                                delivered_ids.add(act_id)
                         except Exception as exc:
                             logger.warning("Failed sending Jules media: %s", exc)
 
