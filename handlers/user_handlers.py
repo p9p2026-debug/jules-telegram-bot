@@ -662,22 +662,35 @@ async def cancel_compose_command(update: Update, context: ContextTypes.DEFAULT_T
 
 def build_jules_prompt_with_delivery(user_prompt: str, chat_id: int, bot_token: str) -> str:
     """
-    Augments the user prompt with explicit instructions on how to deliver generated files
-    and screenshots into Telegram since the user cannot access the local sandbox directory.
+    Augments the user prompt with explicit, permanent instructions ensuring that ALL
+    outputs (images, screenshots, code files, zip archives, pdfs, reports) are delivered
+    directly into Telegram and never left stranded on the local sandbox disk.
     """
     if not bot_token:
         bot_token = config.BOT_TOKEN
 
     instructions = (
-        f"\n\n[DELIVERY DIRECTIVE FOR TELEGRAM:\n"
-        f"You are executing this task on behalf of a user connected via Telegram (Chat ID: {chat_id}). "
-        f"The user DOES NOT have access to your local sandbox filesystem or the web interface files sidebar.\n"
-        f"Whenever you take screenshots, capture browser web pages, or generate files (such as .png, .jpg, .pdf, .zip, etc.):\n"
-        f"1. You MUST send them directly into the user's Telegram chat using curl:\n"
-        f"   - For screenshots/photos: curl -s -X POST 'https://api.telegram.org/bot{bot_token}/sendPhoto' -F chat_id='{chat_id}' -F photo=@<image_path>\n"
-        f"   - For files/documents: curl -s -X POST 'https://api.telegram.org/bot{bot_token}/sendDocument' -F chat_id='{chat_id}' -F document=@<file_path>\n"
-        f"2. You can also upload each file via curl to https://tmpfiles.org/api/v1/upload (or https://catbox.moe/user/api.php) and include the resulting download link in your message so our Telegram bot can download and present it.\n"
-        f"NEVER tell the user 'I saved the files in the project directory' without sending them or providing download links!]"
+        f"\n\n"
+        f"==========================================================\n"
+        f"📌 MANDATORY PERMANENT TELEGRAM DELIVERY INSTRUCTION:\n"
+        f"You are executing this task for a user communicating EXCLUSIVELY via Telegram.\n"
+        f"• Telegram Chat ID: {chat_id}\n"
+        f"• Telegram Bot API Endpoint: https://api.telegram.org/bot{bot_token}\n\n"
+        f"CRITICAL CONSTRAINT:\n"
+        f"The user DOES NOT have access to your local sandbox filesystem, local disk, or any browser sidebar.\n"
+        f"You MUST NEVER tell the user 'the files are saved in the project directory' or leave files solely on disk.\n\n"
+        f"REQUIRED ACTIONS FOR EVERY GENERATED OUTPUT:\n"
+        f"Whenever you generate, capture, or create ANY file (.png, .jpg, .jpeg, .pdf, .zip, .html, .py, .csv, .json, etc.):\n"
+        f"1. You MUST deliver every image/screenshot directly to Telegram using curl:\n"
+        f"   curl -s -X POST 'https://api.telegram.org/bot{bot_token}/sendPhoto' -F chat_id='{chat_id}' -F photo=@<image_path>\n\n"
+        f"2. You MUST deliver every document/code file/archive directly to Telegram using curl:\n"
+        f"   curl -s -X POST 'https://api.telegram.org/bot{bot_token}/sendDocument' -F chat_id='{chat_id}' -F document=@<file_path>\n\n"
+        f"3. You can also run this automated dispatch loop in bash at the end of your work:\n"
+        f"   for f in *.png *.jpg *.jpeg *.webp; do [ -f \"$f\" ] && curl -s -X POST 'https://api.telegram.org/bot{bot_token}/sendPhoto' -F chat_id='{chat_id}' -F photo=\"@$f\"; done\n"
+        f"   for f in *.pdf *.zip *.html *.json *.py *.csv *.txt *.md; do [ -f \"$f\" ] && curl -s -X POST 'https://api.telegram.org/bot{bot_token}/sendDocument' -F chat_id='{chat_id}' -F document=\"@$f\"; done\n\n"
+        f"4. Alternatively, you can upload files to https://tmpfiles.org/api/v1/upload (or https://catbox.moe/user/api.php) and include the download link in your message.\n"
+        f"Every single output MUST arrive in the user's Telegram chat. No exceptions.\n"
+        f"=========================================================="
     )
     return f"{user_prompt}{instructions}"
 
