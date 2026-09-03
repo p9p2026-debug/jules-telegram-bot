@@ -193,7 +193,9 @@ async def model_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
 async def new_session_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handles /new command: creates a new session and clears active task."""
-    user_id = update.effective_user.id
+    user = update.effective_user
+    user_id = user.id
+    await UserRepository.get_or_create(user_id, user.username, user.first_name)
     allowed, reason = await PermissionService.check_access(user_id, config.FEATURE_CREATE_SESSIONS)
     if not allowed:
         await update.message.reply_text(reason)
@@ -203,8 +205,9 @@ async def new_session_command(update: Update, context: ContextTypes.DEFAULT_TYPE
     session_id = await SessionRepository.create_session(user_id)
     await update.message.reply_text(
         f"✨ <b>تم بدء جلسة محادثة ومهمة جديدة بنجاح!</b>\n"
-        f"🆔 معرف الجلسة: <code>{session_id}</code>\n"
-        "تم فك الارتباط بأي مهمة سابقة، ويمكنك الآن إرسال طلب جديد كلياً في الشات.",
+        f"🆔 معرف الجلسة: <code>{session_id}</code>\n\n"
+        "• تم تصفير سياق المحادثة وفك الارتباط التام بأي مهمة سابقة.\n"
+        "• أي رسالة أو مهمة ترسلها الآن ستبدأ كجلسة عمل جديدة ونظيفة من الصفر.",
         parse_mode=ParseMode.HTML
     )
 
@@ -873,9 +876,20 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                 )
                 return
             except Exception as exc:
-                logger.warning("Failed continuing active Jules session %s: %s", active_sess, exc)
-                await SettingsRepository.set_setting(f"active_jules_sess:{user.id}", "")
-                # fall through to create new session
+                err_str = str(exc).lower()
+                if "404" in err_str or "not found" in err_str:
+                    logger.warning("Session %s not found on Jules, clearing: %s", active_sess, exc)
+                    await SettingsRepository.set_setting(f"active_jules_sess:{user.id}", "")
+                    # fall through to create new session
+                else:
+                    logger.exception("Error sending message to active Jules session %s: %s", active_sess, exc)
+                    await status_msg.edit_text(
+                        f"⚠️ <b>تعذر إرسال الأمر للجلسة الحالية (#{clean_id[:8]}):</b>\n"
+                        f"<code>{exc}</code>\n\n"
+                        "💡 يمكنك إعادة المحاولة بعد ثوانٍ، أو الضغط على زر <b>💬 جلسة جديدة</b> في اللوحة أدناه لبدء مهمة جديدة من الصفر.",
+                        parse_mode=ParseMode.HTML
+                    )
+                    return
 
         # Start a new Jules task/session
         repo_display = "بدون مستودع (مباشر)"
@@ -1381,6 +1395,7 @@ async def user_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
     elif data.startswith("jules:fetch_artifacts:"):
         clean_id = data.replace("jules:fetch_artifacts:", "")
         api_key = await JulesService.get_effective_api_key(user_id, key_type="jules")
+        await SettingsRepository.set_setting(f"active_jules_sess:{user_id}", f"sessions/{clean_id}")
         await query.answer("جاري سحب المخرجات والملفات...")
         try:
             activities = await JulesApiClient.list_activities(f"sessions/{clean_id}", api_key=api_key)
@@ -1405,7 +1420,9 @@ async def user_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
                 activities=activities
             )
             await query.message.reply_text(
-                f"✅ تم فحص وإرسال كافة مخرجات وسكرينات المهمة <b>#{clean_id}</b> إلى المحادثة أعلاه.",
+                f"✅ <b>تم استخراج مخرجات وسكرينات المهمة #{clean_id[:8]} بنجاح!</b>\n\n"
+                "💬 <b>أنت الآن متصل بهذه المهمة تلقائياً:</b>\n"
+                "أي تعليق أو طلب ترسله في الشات الآن (مثل 'هات الصور' أو 'عدل كذا') سيتابع معك Jules تنفيذه في نفس بيئة العمل هذه دون فتح مهمة جديدة.",
                 parse_mode=ParseMode.HTML
             )
         except Exception as exc:

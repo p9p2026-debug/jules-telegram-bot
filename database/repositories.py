@@ -225,6 +225,14 @@ class SessionRepository:
     @staticmethod
     async def create_session(user_id: int, title: Optional[str] = None, model: str = "flash") -> str:
         """Creates a new session and sets it as active."""
+        # Ensure user exists in users table to satisfy foreign key constraint
+        user = await fetchone("SELECT user_id FROM users WHERE user_id = ?", (user_id,))
+        if not user:
+            await execute(
+                "INSERT OR IGNORE INTO users (user_id, first_name) VALUES (?, ?)",
+                (user_id, f"User {user_id}")
+            )
+
         session_id = str(uuid.uuid4())[:8]
         if not title:
             title = f"جلسة #{session_id}"
