@@ -83,15 +83,16 @@ class TaskMonitorService:
                     if act_id and act_id in delivered_activity_ids:
                         continue
 
-                    # Deliver live agent messages
+                    # Deliver live agent messages via RichService (Rich Markdown, RTL, and tables)
                     if act.get("originator") == "agent" and "agentMessaged" in act:
                         msg = act["agentMessaged"].get("agentMessage")
                         if msg:
                             try:
-                                await bot.send_message(
+                                from services.rich_service import RichService
+                                await RichService.deliver_rich(
+                                    bot=bot,
                                     chat_id=chat_id,
-                                    text=f"💬 <b>Jules:</b>\n\n{msg}",
-                                    parse_mode=ParseMode.HTML
+                                    raw_markdown=f"💬 **Jules:**\n\n{msg}"
                                 )
                                 if act_id:
                                     delivered_activity_ids.add(act_id)
@@ -364,10 +365,11 @@ class TaskMonitorService:
                     msg = act["agentMessaged"].get("agentMessage")
                     if msg:
                         try:
-                            await bot.send_message(
+                            from services.rich_service import RichService
+                            await RichService.deliver_rich(
+                                bot=bot,
                                 chat_id=chat_id,
-                                text=f"💬 <b>تقرير من Jules:</b>\n\n{msg}",
-                                parse_mode=ParseMode.HTML
+                                raw_markdown=f"💬 **تقرير من Jules:**\n\n{msg}"
                             )
                             if act_id:
                                 delivered_ids.add(act_id)

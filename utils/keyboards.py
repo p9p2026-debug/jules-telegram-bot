@@ -11,8 +11,8 @@ def get_main_keyboard(is_admin: bool = False) -> ReplyKeyboardMarkup:
     """Generates the main persistent reply keyboard for quick access."""
     buttons = [
         [KeyboardButton("⚡ تبديل النموذج"), KeyboardButton("💬 جلسة جديدة")],
-        [KeyboardButton("📂 جلساتي"), KeyboardButton("🔑 مفتاح API")],
-        [KeyboardButton("ℹ️ المساعدة والمعلومات")]
+        [KeyboardButton("📁 مستودعات GitHub"), KeyboardButton("📋 مهامي البرمجية")],
+        [KeyboardButton("🔑 مفتاح API"), KeyboardButton("ℹ️ المساعدة والمعلومات")]
     ]
     if is_admin:
         buttons.append([KeyboardButton("🛠️ لوحة تحكم الأدمن (/admin)")])
@@ -235,6 +235,7 @@ def get_admin_main_keyboard(maintenance_on: bool, whitelist_on: bool) -> InlineK
             InlineKeyboardButton(text="🔄 تحديث", callback_data="admin:refresh")
         ],
         [
+            InlineKeyboardButton(text="📖 دليل الأدمن الشامل", callback_data="admin:guide"),
             InlineKeyboardButton(text="❌ إغلاق اللوحة", callback_data="admin:close")
         ]
     ]

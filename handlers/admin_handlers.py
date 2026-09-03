@@ -351,9 +351,67 @@ async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_T
             )
         )
 
+    elif data == "admin:guide":
+        await query.edit_message_text(
+            text=get_admin_guide_text(),
+            parse_mode=ParseMode.HTML,
+            reply_markup=get_admin_main_keyboard(
+                await SettingsRepository.is_maintenance_mode(),
+                await SettingsRepository.is_whitelist_mode()
+            )
+        )
+
+
+def get_admin_guide_text() -> str:
+    """Returns the comprehensive admin guide text."""
+    return (
+        "📖 <b>دليل الإدارة الشامل (Admin Guide)</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "👑 <b>القاعدة الذهبية:</b>\n"
+        "• تيليجرام لكل شيء (المفاتيح، الصلاحيات، الرقابة، النماذج، المستودعات).\n"
+        "• ريندر (Render) فقط للمتغيرات البيئية الأساسية عند الإقلاع الأول.\n\n"
+        "⚡ <b>أوامر الإدارة المباشرة:</b>\n"
+        "• <code>/admin</code> - فتح لوحة التحكم التفاعلية الشاملة.\n"
+        "• <code>/search &lt;ID/@username&gt;</code> - البحث عن مستخدم وإدارة صلاحياته وحظره.\n"
+        "• <code>/adminguide</code> - فتح هذا الدليل الإرشادي في أي وقت.\n\n"
+        "🛡️ <b>أنظمة الأمان والتحكم:</b>\n"
+        "1. <b>وضع الصيانة (Maintenance Mode):</b>\n"
+        "   إغلاق البوت فوراً أمام كافة المستخدمين وحصره للأدمن فقط لحين انتهاء التحديثات.\n"
+        "2. <b>وضع القائمة البيضاء (Whitelist Mode):</b>\n"
+        "   قصر استخدام البوت فقط على الأشخاص المضافين يدوياً في القائمة البيضاء.\n"
+        "3. <b>التحكم في الميزات العامة (Global Features):</b>\n"
+        "   تعطيل أو تفعيل أي ميزة برمجية للنظام ككل بضغطة زر (تبديل النماذج، الوكيل المستقل، رفع الملفات، إنشاء الجلسات، مفاتيح API).\n"
+        "4. <b>التخصيص الفردي ثلاثي الحالات (Per-User Overrides):</b>\n"
+        "   • ⚪ <b>يتبع النظام:</b> يعود للإعداد الافتراضي العام للبوت.\n"
+        "   • 🟢 <b>مسموح خصيصاً:</b> يمنح المستخدم الميزة حتى لو عطلها الأدمن عاماً.\n"
+        "   • 🔴 <b>ممنوع خصيصاً:</b> يحجب الميزة عن المستخدم تحديداً دون التأثير على البقية.\n\n"
+        "🛠️ <b>النماذج ووكيل Jules:</b>\n"
+        "• نماذج Jules الرسمية: <code>gemini-3.6-flash</code> و <code>gemini-3.1-pro</code>.\n"
+        "• نماذج Google AI Studio: من <code>gemini-3.1-pro</code> وحتى <code>gemini-3.8-flash</code>.\n"
+        "• وضع المستودعات: <code>/repos</code> لاختيار المشروع، أو <code>/repos none</code> للمحادثة المباشرة وتصفح الويب دون مستودع.\n"
+        "• متابعة المهام: <code>/tasks</code> لمتابعة المهام، الرد التفاعلي، اعتماد الخطط، وتنزيل السكرينات والمخرجات فوراً.\n\n"
+        "📝 <b>نظام الرتش (Rich Messages 2026):</b>\n"
+        "• يدعم البوت استقبال وتوليد النصوص المنسقة، إصلاح الجداول المتكسرة، ودعم اتجاه النص العربي RTL، ومحاذاة الأكواد البرمجية.\n"
+        "━━━━━━━━━━━━━━━━━━━━━"
+    )
+
+
+async def adminguide_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Handles /adminguide command."""
+    user_id = update.effective_user.id
+    if not PermissionService.is_admin(user_id):
+        await update.message.reply_text("⛔ عذراً، هذا الأمر مخصص لمديري النظام فقط.")
+        return
+
+    await update.message.reply_text(
+        text=get_admin_guide_text(),
+        parse_mode=ParseMode.HTML
+    )
+
 
 def register_admin_handlers(app: Application) -> None:
     """Registers all admin-related command and callback handlers."""
     app.add_handler(CommandHandler("admin", admin_command))
     app.add_handler(CommandHandler("search", search_user_command))
+    app.add_handler(CommandHandler("adminguide", adminguide_command))
     app.add_handler(CallbackQueryHandler(admin_callback_handler, pattern=r"^admin:"))

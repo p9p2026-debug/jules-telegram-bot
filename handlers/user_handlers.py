@@ -19,6 +19,7 @@ from telegram.ext import (
 import config
 from database.repositories import SessionRepository, SettingsRepository, UserRepository
 from services.format_service import FormatService
+from services.incoming_service import extract_incoming_message
 from services.jules_service import JulesService
 from services.jules_api_client import JulesApiClient, JulesApiException
 from services.task_monitor_service import TaskMonitorService
@@ -60,19 +61,19 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     is_admin = PermissionService.is_admin(user.id)
 
     welcome_text = (
-        f"🤖 <b>أهلاً بك يا {user.first_name} في المساعد البرمجي والهندسي المتقدم!</b>\n"
+        f"🤖 <b>أهلاً بك يا {user.first_name} في المساعد البرمجي ووكيل Jules المتطور!</b>\n"
         "━━━━━━━━━━━━━━━━━━━━━\n"
-        "أنا مساعدك التقني المتكامل لحل المشكلات البرمجية، وتصميم المعماريات السحابية، وتنفيذ المهام التلقائية.\n\n"
-        "✨ <b>قدراتي وخدماتي البرمجية:</b>\n"
-        "• كتابة وتدقيق الأكواد بمختلف لغات البرمجة وحل المشكلات المعقدة.\n"
-        "• تنفيذ مهام برمجية متكاملة على مستودعات GitHub وفتح Pull Requests آلياً.\n"
-        "• مراجعة وتصميم المعماريات البرمجية السحابية (Cloud Architectures).\n"
-        "• تحليل مستندات الأكواد والملفات البرمجية (PDF, Markdown, Python, إلخ).\n"
-        "• فحص وتفسير المخططات والتصاميم من الصور والمخططات التوضيحية.\n\n"
-        f"⚡ <b>الوضع والنموذج النشط:</b> <code>{model_display}</code>\n"
+        "أنا مساعدك السحابي المتكامل للبرمجة وتطوير الأنظمة، مدعوم بأحدث تقنيات Google Jules والرسائل الغنية (Rich Messages 2026).\n\n"
+        "✨ <b>القدرات والخدمات المتاحة:</b>\n"
+        "• <b>وكيل Jules المستقل:</b> تنفيذ مهام برمجية شاملة، تصفح الويب، التقاط لقطات الشاشة الحية، وفتح Pull Requests.\n"
+        "• <b>محادثة حية مستمرة (Multi-Turn):</b> يمكنك التعليق على أي مهمة ومتابعة التعديلات وسحب المخرجات فوراً في نفس الشات.\n"
+        "• <b>دعم المستودعات أو الشات المباشر:</b> ربط مستودعات GitHub عبر <code>/repos</code>، أو الدردشة المباشرة دون مستودع عبر <code>/repos none</code>.\n"
+        "• <b>إرسال واستقبال الملفات:</b> استقبال مستندات PDF و Markdown وأكواد البرمجة، وتوليد ملفات ومخرجات جاهزة للتحميل.\n"
+        "• <b>نظام الرتش الذكي (2026):</b> دعم كامل لترتيب الجداول، اتجاه النصوص العربية RTL، والأكواد المنسقة.\n\n"
+        f"⚡ <b>النموذج المعتمد:</b> <code>{model_display}</code>\n"
         f"💬 <b>الجلسة النشطة:</b> <code>{active_session['title']}</code>\n"
         "━━━━━━━━━━━━━━━━━━━━━\n"
-        "💡 <i>أرسل استفسارك البرمجي، ملفك، أو صورتك مباشرة وسأقوم بتحليلها فوراً!</i>"
+        "💡 <i>اضغط على أي زر في اللوحة أدناه أو أرسل استفسارك أو ملفك وسأبدأ فوراً!</i>"
     )
 
     await update.message.reply_text(
@@ -93,23 +94,28 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     is_admin = PermissionService.is_admin(user_id)
 
     help_text = (
-        "📖 <b>دليل استخدام وأوامر المساعد الذكي:</b>\n"
+        "📖 <b>دليل استخدام وأوامر المساعد الذكي ووكيل Jules:</b>\n"
         "━━━━━━━━━━━━━━━━━━━━━\n"
         "⚡ <b>النماذج والذكاء الاصطناعي:</b>\n"
-        "• <code>/model</code> - التبديل التفاعلي بين النماذج (السريع، المتعمق، ووكيل المستودعات التلقائي).\n"
-        "• <code>/repos</code> - استعراض مستودعات GitHub المتصلة بحسابك واختيار المشروع.\n"
-        "• <code>/tasks</code> - متابعة المهام البرمجية الجارية والسابقة وروابط الـ Pull Requests.\n\n"
-        "💬 <b>إدارة الجلسات والسياق:</b>\n"
-        "• <code>/new</code> - بدء جلسة جديدة كلياً وتصفير سياق المحادثة.\n"
-        "• <code>/sessions</code> - استعراض الجلسات السابقة والتبديل بينها أو حذفها.\n\n"
+        "• <code>/model</code> - التبديل التفاعلي بين نماذج Jules الرسمية (<code>gemini-3.6-flash</code> و <code>gemini-3.1-pro</code>) ونماذج Google AI Studio.\n"
+        "• <code>/repos</code> - استعراض مستودعات GitHub واختيار المستودع المستهدف.\n"
+        "• <code>/repos none</code> - تفعيل وضع Jules المباشر للدردشة وتصفح الويب وسحب السكرينات دون الحاجة لمستودع.\n"
+        "• <code>/repos clear</code> - إلغاء ربط المستودع الحالي.\n"
+        "• <code>/github &lt;token&gt;</code> (أو <code>/gh</code>) - ضبط توكن GitHub الشخصي لسحب ملفات الـ PRs وتحميلها في الشات.\n"
+        "• <code>/tasks</code> - قائمة المهام السحابية التفاعلية مع أزرار فورية للرد والمتابعة، اعتماد الخطط البرمجية، وسحب الملفات والسكرينات.\n\n"
+        "💬 <b>إدارة الجلسات والمحادثة المستمرة:</b>\n"
+        "• <code>/new</code> - بدء مهمة وجلسة جديدة كلياً وتصفير سياق المحادثة.\n"
+        "• <code>/sessions</code> - استعراض الجلسات السابقة والتبديل بينها أو حذفها.\n"
+        "• <b>المتابعة التلقائية:</b> يمكنك الرد أو التعليق على أي مهمة سابقة وسيتابع معك Jules التعديلات في نفس المهمة.\n\n"
         "🔑 <b>مفاتيح API:</b>\n"
-        "• <code>/apikey &lt;key&gt;</code> - تعيين مفتاح API خاص بك لتجنب نفاد الحصة.\n"
+        "• <code>/apikey &lt;key&gt;</code> - تعيين مفتاح Jules الرسمي (يبدأ بـ <code>AQ.</code>) أو مفتاح Google AI Studio (يبدأ بـ <code>AIza</code>).\n"
         "• <code>/apikey clear</code> - إزالة مفتاحك الخاص والعودة للمفتاح الافتراضي للبوت.\n\n"
-        "📝 <b>المنشورات الغنية (Rich Messages):</b>\n"
-        "• <code>/compose</code> - بدء محرر المنشور المركب لتجميع نصوص وجداول وصور ونشرها كرسالة غنية واحدة.\n\n"
-        "📁 <b>المستندات والوسائط:</b>\n"
-        "• أرسل أي ملف (<code>.pdf</code>, <code>.md</code>, <code>.py</code>, <code>.json</code>) مع تعليق تريده وسيقوم المساعد بفحصه وتقديم الشرح والحلول داخل المحادثة.\n"
-        "• أرسل صورة أو مخطط هيكلي وسأقوم بتحليله وتفسير محتواه برمجياً.\n"
+        "📁 <b>إرسال واستقبال الملفات والوسائط:</b>\n"
+        "• <b>استقبال الملفات:</b> أرسل أي ملف كود (<code>.py</code>, <code>.js</code>, <code>.html</code>, إلخ) أو <code>.pdf</code> أو <code>.docx</code> أو صورة وسيقوم المساعد بتحليلها فوراً.\n"
+        "• <b>استلام المخرجات:</b> يرسل لك البوت لقطات الشاشة المباشرة والملفات الناتجة من Jules فور توليدها كملفات وصور قابلة للتحميل.\n\n"
+        "📝 <b>المنشورات والرسائل الغنية (Rich Messages 2026):</b>\n"
+        "• <code>/compose</code> - بدء محرر المنشور المركب لتجميع نصوص وجداول وصور ونشرها كرسالة غنية واحدة.\n"
+        "• البوت مجهز لاستقبال وقراءة التنسيقات الغنية المباشرة والكيانات (Bold, Italic, Tables, RTL, Blockquotes).\n"
     )
 
     if is_admin:
@@ -117,6 +123,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
             "\n👑 <b>أوامر الإدارة (Admins Only):</b>\n"
             "• <code>/admin</code> - فتح لوحة التحكم الرئيسية والصلاحيات.\n"
             "• <code>/search &lt;id/username&gt;</code> - البحث عن مستخدم وإدارة صلاحياته وحظره.\n"
+            "• <code>/adminguide</code> - فتح دليل الأدمن الشامل.\n"
         )
 
     help_text += "━━━━━━━━━━━━━━━━━━━━━"
@@ -656,7 +663,9 @@ async def cancel_compose_command(update: Update, context: ContextTypes.DEFAULT_T
 async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handles general incoming text messages from users."""
     user = update.effective_user
-    text = update.message.text.strip()
+    plain_text, markdown_text = extract_incoming_message(update.message)
+    text = plain_text.strip()
+    ai_prompt = markdown_text.strip() or text
 
     # Reply Keyboard button shortcuts
     if text == "⚡ تبديل النموذج":
@@ -664,6 +673,12 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         return
     elif text == "💬 جلسة جديدة":
         await new_session_command(update, context)
+        return
+    elif text in ["📁 مستودعات GitHub", "📂 مستودعاتي"]:
+        await repos_command(update, context)
+        return
+    elif text in ["📋 مهامي البرمجية", "📋 المهام"]:
+        await tasks_command(update, context)
         return
     elif text == "📂 جلساتي":
         await sessions_command(update, context)
@@ -808,7 +823,7 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                 parse_mode=ParseMode.HTML
             )
             try:
-                await JulesApiClient.send_message(active_sess, text, api_key=effective_api_key)
+                await JulesApiClient.send_message(active_sess, ai_prompt, api_key=effective_api_key)
                 repo_label = active_source.replace("sources/github-", "").replace("sources/", "") if active_source else "متابعة المهمة"
                 await TaskMonitorService.start_monitoring(
                     bot=context.bot,
@@ -816,7 +831,7 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                     status_message_id=status_msg.message_id,
                     session_name=active_sess,
                     repo_name=repo_label,
-                    prompt=text,
+                    prompt=ai_prompt,
                     user_id=user.id,
                     api_key=effective_api_key
                 )
@@ -844,12 +859,12 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             if active_source and active_source != "none":
                 session_obj = await JulesApiClient.create_session(
                     source=active_source,
-                    prompt=text,
+                    prompt=ai_prompt,
                     api_key=effective_api_key
                 )
             else:
                 session_obj = await JulesApiClient.create_chat_session(
-                    prompt=text,
+                    prompt=ai_prompt,
                     api_key=effective_api_key
                 )
 
@@ -861,7 +876,7 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                 status_message_id=status_msg.message_id,
                 session_name=session_name,
                 repo_name=repo_display,
-                prompt=text,
+                prompt=ai_prompt,
                 user_id=user.id,
                 api_key=effective_api_key
             )
@@ -880,11 +895,11 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     # Send live typing action indicator
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
 
-    # Generate answer with Jules
+    # Generate answer with Jules / Gemini Studio
     response_text = await JulesService.generate_response(
         user_id=user.id,
         session_id=session["session_id"],
-        user_prompt=text
+        user_prompt=ai_prompt
     )
 
     # Deliver using Rich Message Service (supporting tables, RTL, and intelligent fallback)
