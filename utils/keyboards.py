@@ -127,6 +127,16 @@ def get_sources_keyboard(sources: List[dict], selected_source: str = "") -> Inli
     """Inline keyboard listing connected GitHub repositories from Jules API."""
     keyboard = []
 
+    # Option to use Jules without a repo (Chat / Direct Discussion mode)
+    is_none_selected = not selected_source or selected_source == "none"
+    none_prefix = "⭐ " if is_none_selected else "💬 "
+    keyboard.append([
+        InlineKeyboardButton(
+            text=f"{none_prefix}بدون مستودع (محادثة شات مباشرة فقط)",
+            callback_data="user:sel_src:none"
+        )
+    ])
+
     for src in sources:
         raw_name = src.get("name", "")
         # format: sources/github-username-repo

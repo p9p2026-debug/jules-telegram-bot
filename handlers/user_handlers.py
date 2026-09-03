@@ -406,6 +406,21 @@ async def repos_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await update.message.reply_text(reason)
         return
 
+    # Check for direct clear/none argument
+    if context.args:
+        arg = context.args[0].strip().lower()
+        if arg in ["clear", "none", "disable", "cancel"]:
+            await SettingsRepository.set_setting(f"user_source:{user_id}", "")
+            await UserRepository.update_model(user_id, "gemini-3.6-flash")
+            await update.message.reply_text(
+                "💬 <b>تم فك ارتباط المستودع وتفعيل وضع الدردشة المباشرة مع Jules:</b>\n"
+                "━━━━━━━━━━━━━━━━━━━━━\n"
+                "• النموذج الحالي: <code>gemini-3.6-flash</code> (Jules Chat).\n"
+                "• يمكنك الآن مراسلة Jules مباشرة في الشات وسيجيبك فوراً دون فتح Pull Requests على GitHub!",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
     try:
         sources = await JulesApiClient.list_sources()
@@ -1124,6 +1139,24 @@ async def user_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
 
     elif data.startswith("user:sel_src:"):
         source_name = data.replace("user:sel_src:", "")
+        if source_name == "none":
+            await SettingsRepository.set_setting(f"user_source:{user_id}", "")
+            await UserRepository.update_model(user_id, "gemini-3.6-flash")
+            await query.answer("تم تفعيل وضع الدردشة المباشرة (بدون مستودع)!")
+            try:
+                await query.edit_message_reply_markup(reply_markup=None)
+            except Exception:
+                pass
+            await query.message.reply_text(
+                "💬 <b>تم تفعيل وضع الدردشة المباشرة مع Jules (بدون مستودع):</b>\n"
+                "━━━━━━━━━━━━━━━━━━━━━\n"
+                "• تم فك ارتباط أي مستودع GitHub.\n"
+                "• تم ضبط النموذج على: <code>gemini-3.6-flash</code> (Jules Chat).\n"
+                "• يمكنك الآن إرسال استفساراتك البرمجية والأسئلة مباشرة وسيجيبك Jules فوراً في الشات دون فتح Pull Requests!",
+                parse_mode=ParseMode.HTML
+            )
+            return
+
         await SettingsRepository.set_setting(f"user_source:{user_id}", source_name)
         await UserRepository.update_model(user_id, config.MODEL_CHOICE_AGENT)
 

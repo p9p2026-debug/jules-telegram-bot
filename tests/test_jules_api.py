@@ -41,16 +41,19 @@ class TestJulesApiClient(unittest.TestCase):
             }
         ]
         kb = get_sources_keyboard(mock_sources, selected_source="sources/github-p9p2026-debug-jules-telegram-bot")
-        # 2 repos + 1 action row = 3 rows
-        self.assertEqual(len(kb.inline_keyboard), 3)
+        # 1 none-repo row + 2 repos + 1 action row = 4 rows
+        self.assertEqual(len(kb.inline_keyboard), 4)
 
-        # First button should have star indicator
-        self.assertIn("⭐", kb.inline_keyboard[0][0].text)
-        self.assertEqual(kb.inline_keyboard[0][0].callback_data, "user:sel_src:sources/github-p9p2026-debug-jules-telegram-bot")
+        # Row 0: Option to use without repo
+        self.assertEqual(kb.inline_keyboard[0][0].callback_data, "user:sel_src:none")
 
-        # Second button should have folder indicator
-        self.assertIn("📁", kb.inline_keyboard[1][0].text)
-        self.assertEqual(kb.inline_keyboard[1][0].callback_data, "user:sel_src:sources/github-myorg-awesome-app")
+        # Row 1: Selected repo has star indicator
+        self.assertIn("⭐", kb.inline_keyboard[1][0].text)
+        self.assertEqual(kb.inline_keyboard[1][0].callback_data, "user:sel_src:sources/github-p9p2026-debug-jules-telegram-bot")
+
+        # Row 2: Unselected repo has folder indicator
+        self.assertIn("📁", kb.inline_keyboard[2][0].text)
+        self.assertEqual(kb.inline_keyboard[2][0].callback_data, "user:sel_src:sources/github-myorg-awesome-app")
 
     @patch("services.jules_api_client.urllib.request.urlopen")
     def test_list_sources_success(self, mock_urlopen):
