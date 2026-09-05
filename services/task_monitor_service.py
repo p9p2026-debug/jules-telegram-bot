@@ -92,7 +92,7 @@ class TaskMonitorService:
                                 await RichService.deliver_rich(
                                     bot=bot,
                                     chat_id=chat_id,
-                                    raw_markdown=f"💬 **Jules:**\n\n{msg}"
+                                    raw_markdown=f"💬 **المساعد الذكي:**\n\n{msg}"
                                 )
                                 if act_id:
                                     delivered_activity_ids.add(act_id)
@@ -112,7 +112,7 @@ class TaskMonitorService:
                                     img_bytes = base64.b64decode(b64_data)
                                     bio = io.BytesIO(img_bytes)
                                     bio.name = "screenshot.png"
-                                    cap = m.get("title") or "🖼️ <b>لقطة شاشة من Jules</b>"
+                                    cap = m.get("title") or "🖼️ <b>لقطة شاشة مستخرجة</b>"
                                     await bot.send_photo(
                                         chat_id=chat_id,
                                         photo=bio,
@@ -164,10 +164,10 @@ class TaskMonitorService:
                             plan_desc = p.get("plan") or p.get("description") or p.get("title") or ""
 
                     plan_text = (
-                        "📋 <b>خطة عمل مقترحة من Jules:</b>\n"
+                        "📋 <b>خطة العمل المقترحة:</b>\n"
                         "━━━━━━━━━━━━━━━━━━━━━\n"
                         f"📝 <b>الطلب:</b> <i>{prompt}</i>\n\n"
-                        f"{plan_desc or 'قام Jules بوضع خطة عمل وينتظر اعتمادك للبدء في تنفيذها.'}\n"
+                        f"{plan_desc or 'تم تجهيز خطة عمل وبانتظار اعتمادك للبدء في تنفيذها.'}\n"
                         "━━━━━━━━━━━━━━━━━━━━━\n"
                         "<i>اضغط على 'اعتماد وتنفيذ' للمتابعة، أو اكتب تعليقك لتعديل الخطة:</i>"
                     )
@@ -175,9 +175,6 @@ class TaskMonitorService:
                         [
                             InlineKeyboardButton("✅ اعتماد وتنفيذ الخطة", callback_data=f"jules:approve:{clean_id}"),
                             InlineKeyboardButton("💬 تعديل أو تعليق", callback_data=f"jules:reply:{clean_id}")
-                        ],
-                        [
-                            InlineKeyboardButton("🌐 عرض في منصة Jules", url=f"https://jules.google.com/session/{clean_id}")
                         ]
                     ]
                     if plan_text != last_rendered_text:
@@ -200,7 +197,7 @@ class TaskMonitorService:
                     await SettingsRepository.set_setting(f"active_jules_sess:{user_id}", session_name)
 
                     final_text = (
-                        "🎉 <b>تم إنجاز المهمة بنجاح بواسطة Jules!</b>\n"
+                        "🎉 <b>تم إنجاز المهمة بنجاح!</b>\n"
                         "━━━━━━━━━━━━━━━━━━━━━\n"
                         f"📁 <b>المستهدف:</b> <code>{repo_name or 'مهمة مباشرة'}</code>\n"
                         f"📝 <b>الطلب:</b> <i>{prompt}</i>\n"
@@ -220,9 +217,6 @@ class TaskMonitorService:
                         InlineKeyboardButton("💬 الرد على هذه المهمة", callback_data=f"jules:reply:{clean_id}"),
                         InlineKeyboardButton("➕ بدء مهمة جديدة", callback_data="user:new_jules_task")
                     ])
-
-                    sess_url = session_data.get("url") or f"https://jules.google.com/session/{clean_id}"
-                    buttons.append([InlineKeyboardButton("🌐 عرض الجلسة في منصة Jules", url=sess_url)])
 
                     keyboard = InlineKeyboardMarkup(buttons)
                     try:
@@ -257,9 +251,11 @@ class TaskMonitorService:
                         f"📁 <b>المستهدف:</b> <code>{repo_name or 'مهمة مباشرة'}</code>\n"
                         f"⚠️ <b>السبب:</b> {error_msg}\n"
                         "━━━━━━━━━━━━━━━━━━━━━\n"
-                        "يمكنك المحاولة مجدداً أو مراجعة التفاصيل عبر الرابط أدناه."
+                        "يمكنك إعادة صياغة الطلب أو بدء مهمة جديدة."
                     )
-                    buttons = [[InlineKeyboardButton("🌐 عرض الجلسة في منصة Jules", url=f"https://jules.google.com/session/{clean_id}")]]
+                    buttons = [
+                        [InlineKeyboardButton("➕ بدء مهمة جديدة", callback_data="user:new_jules_task")]
+                    ]
                     try:
                         await bot.edit_message_text(
                             chat_id=chat_id,
@@ -274,7 +270,7 @@ class TaskMonitorService:
 
                 # In-Progress state update
                 progress_text = (
-                    "🛠️ <b>جاري تنفيذ المهمة عبر Jules...</b>\n"
+                    "🛠️ <b>جاري تنفيذ المهمة البرمجية...</b>\n"
                     "━━━━━━━━━━━━━━━━━━━━━\n"
                     f"📁 <b>المستهدف:</b> <code>{repo_name or 'مهمة مباشرة'}</code>\n"
                     f"📝 <b>الطلب:</b> <i>{prompt}</i>\n"
@@ -389,14 +385,14 @@ class TaskMonitorService:
                             await bot.send_photo(
                                 chat_id=chat_id,
                                 photo=bio,
-                                caption=f"🖼️ <b>لقطة شاشة مستخرجة من Jules:</b> <code>{fname}</code>",
+                                caption=f"🖼️ <b>لقطة شاشة مستخرجة:</b> <code>{fname}</code>",
                                 parse_mode=ParseMode.HTML
                             )
                         else:
                             await bot.send_document(
                                 chat_id=chat_id,
                                 document=bio,
-                                caption=f"📄 <b>ملف تم تنزيله من Jules:</b> <code>{fname}</code>",
+                                caption=f"📄 <b>ملف تم تنزيله:</b> <code>{fname}</code>",
                                 parse_mode=ParseMode.HTML
                             )
                 except Exception as exc:
@@ -434,7 +430,7 @@ class TaskMonitorService:
                             await RichService.deliver_rich(
                                 bot=bot,
                                 chat_id=chat_id,
-                                raw_markdown=f"💬 **تقرير من Jules:**\n\n{msg}"
+                                raw_markdown=f"💬 **تقرير الإنجاز:**\n\n{msg}"
                             )
                             if act_id:
                                 delivered_ids.add(act_id)
@@ -458,7 +454,7 @@ class TaskMonitorService:
                             img_bytes = base64.b64decode(b64_data)
                             bio = io.BytesIO(img_bytes)
                             bio.name = "screenshot.png"
-                            cap = m.get("title") or "🖼️ <b>معاينة / لقطة شاشة من Jules</b>"
+                            cap = m.get("title") or "🖼️ <b>معاينة / لقطة شاشة للنتيجة</b>"
                             await bot.send_photo(
                                 chat_id=chat_id,
                                 photo=bio,
@@ -489,7 +485,7 @@ class TaskMonitorService:
                                 await bot.send_document(
                                     chat_id=chat_id,
                                     document=bio,
-                                    caption=f"📄 <b>الملف المُولد من جولز:</b> <code>{base_name}</code>",
+                                    caption=f"📄 <b>الملف المُولد برمجياً:</b> <code>{base_name}</code>",
                                     parse_mode=ParseMode.HTML
                                 )
                                 delivered_count += 1

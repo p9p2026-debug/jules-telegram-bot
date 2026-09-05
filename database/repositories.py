@@ -347,3 +347,43 @@ class SessionRepository:
         """Returns total message count."""
         res = await fetchone("SELECT COUNT(*) as count FROM session_messages")
         return res["count"] if res else 0
+
+
+class TaskRepository:
+    """Repository for isolating tasks and sessions per user."""
+
+    @staticmethod
+    async def add_task(user_id: int, session_name: str, prompt: str, repo_name: Optional[str] = None) -> None:
+        """Records a task associated strictly with a specific user."""
+        clean_name = session_name if session_name.startswith("sessions/") else f"sessions/{session_name}"
+        await execute(
+            """
+            INSERT OR REPLACE INTO user_tasks (user_id, session_name, prompt, repo_name, created_at)
+            VALUES (?, ?, ?, ?, datetime('now'))
+            """,
+            (user_id, clean_name, prompt, repo_name)
+        )
+
+    @staticmethod
+    async def list_user_tasks(user_id: int, limit: int = 6) -> List[dict]:
+        """Retrieves recent tasks strictly belonging to the given user."""
+        return await fetchall(
+            """
+            SELECT * FROM user_tasks 
+            WHERE user_id = ? 
+            ORDER BY created_at DESC 
+            LIMIT ?
+            """,
+            (user_id, limit)
+        )
+
+    @staticmethod
+    async def is_task_owned_by_user(user_id: int, session_name: str) -> bool:
+        """Verifies whether a session is owned by the specified user."""
+        clean_name = session_name if session_name.startswith("sessions/") else f"sessions/{session_name}"
+        res = await fetchone(
+            "SELECT id FROM user_tasks WHERE user_id = ? AND (session_name = ? OR session_name = ?)",
+            (user_id, session_name, clean_name)
+        )
+        return bool(res)
+

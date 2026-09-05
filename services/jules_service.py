@@ -331,10 +331,10 @@ class JulesService:
 
         except JulesApiException as j_err:
             logger.exception("Jules API error: %s", j_err)
-            return f"❌ **خطأ في Jules API:**\n`{str(j_err)}`"
+            return f"❌ **خطأ في محرك البرمجة:**\n`{str(j_err)}`"
         except Exception as exc:
             logger.exception("Jules execution error: %s", exc)
-            return f"❌ **حدث خطأ أثناء معالجة الطلب عبر Jules:**\n`{str(exc)}`"
+            return f"❌ **حدث خطأ أثناء معالجة الطلب برمجياً:**\n`{str(exc)}`"
 
 
 def html_escape(text: str) -> str:

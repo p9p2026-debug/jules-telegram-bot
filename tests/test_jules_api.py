@@ -6,7 +6,12 @@ import unittest
 from unittest.mock import AsyncMock, MagicMock, patch
 import config
 from services.jules_api_client import JulesApiClient, JulesApiException
-from utils.keyboards import get_model_switch_keyboard, get_sources_keyboard
+from utils.keyboards import (
+    get_model_switch_keyboard,
+    get_sources_keyboard,
+    get_main_keyboard,
+    get_apikey_dashboard_keyboard
+)
 
 class TestJulesApiClient(unittest.TestCase):
 
@@ -85,6 +90,38 @@ class TestJulesApiClient(unittest.TestCase):
 
         result = JulesApiClient._execute_request("sessions/12345:approvePlan", "POST", {}, api_key="dummy_test_key")
         self.assertEqual(result.get("name"), "sessions/12345")
+
+    def test_main_keyboard_privacy_and_whitelabel(self):
+        # Regular user (no custom key, not admin)
+        kb_reg = get_main_keyboard(is_admin=False, has_custom_key=False)
+        reg_buttons = [btn.text for row in kb_reg.keyboard for btn in row]
+        # Should NOT have help button or repo button or admin button
+        self.assertNotIn("ℹ️ المساعدة والمعلومات", reg_buttons)
+        self.assertNotIn("📁 المستودعات البرمجية", reg_buttons)
+        self.assertNotIn("🛠️ لوحة تحكم الأدمن (/admin)", reg_buttons)
+        # Should have previous tasks
+        self.assertIn("📋 مهامي السابقة", reg_buttons)
+        self.assertIn("⚡ تبديل النموذج", reg_buttons)
+
+        # Admin user
+        kb_admin = get_main_keyboard(is_admin=True, has_custom_key=False)
+        admin_buttons = [btn.text for row in kb_admin.keyboard for btn in row]
+        self.assertIn("📁 المستودعات البرمجية", admin_buttons)
+        self.assertIn("🛠️ لوحة تحكم الأدمن (/admin)", admin_buttons)
+        self.assertNotIn("ℹ️ المساعدة والمعلومات", admin_buttons)
+
+        # User with custom key
+        kb_custom = get_main_keyboard(is_admin=False, has_custom_key=True)
+        custom_buttons = [btn.text for row in kb_custom.keyboard for btn in row]
+        self.assertIn("📁 المستودعات البرمجية", custom_buttons)
+        self.assertNotIn("🛠️ لوحة تحكم الأدمن (/admin)", custom_buttons)
+
+    def test_apikey_dashboard_keyboard_whitelabel(self):
+        kb = get_apikey_dashboard_keyboard(has_gemini=True, has_jules=False, is_admin=False)
+        all_buttons = [btn.text for row in kb.inline_keyboard for btn in row]
+        # Must be white-labeled (no mention of Jules)
+        self.assertTrue(any("مفتاح الوكيل" in txt for txt in all_buttons))
+        self.assertFalse(any("Jules" in txt for txt in all_buttons))
 
     def test_missing_api_key_raises_exception(self):
         with patch.object(config, "JULES_API_KEY", ""):

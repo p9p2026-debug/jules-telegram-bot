@@ -20,7 +20,8 @@ from database.repositories import (
     UserRepository,
     PermissionRepository,
     SettingsRepository,
-    SessionRepository
+    SessionRepository,
+    TaskRepository
 )
 
 class TestDatabase(unittest.IsolatedAsyncioTestCase):
@@ -82,6 +83,40 @@ class TestDatabase(unittest.IsolatedAsyncioTestCase):
 
         await PermissionRepository.set_user_override(12345, "upload_files", True)
         self.assertTrue(await PermissionRepository.get_user_override(12345, "upload_files"))
+
+    async def test_task_isolation_and_ownership(self):
+        user_a = 12345
+        user_b = 67890
+        await UserRepository.get_or_create(user_b, "userb", "User B")
+
+        # User A creates tasks
+        await TaskRepository.add_task(user_a, "sessions/sess-111", "Task 1 for User A", "repo-a")
+        await TaskRepository.add_task(user_a, "sess-222", "Task 2 for User A", "repo-a")
+
+        # User B creates a task
+        await TaskRepository.add_task(user_b, "sessions/sess-333", "Secret Task for User B", "repo-b")
+
+        # Verify strict isolation: User A sees only their 2 tasks
+        tasks_a = await TaskRepository.list_user_tasks(user_a)
+        self.assertEqual(len(tasks_a), 2)
+        sess_names_a = [t["session_name"] for t in tasks_a]
+        self.assertIn("sessions/sess-111", sess_names_a)
+        self.assertIn("sessions/sess-222", sess_names_a)
+        self.assertNotIn("sessions/sess-333", sess_names_a)
+
+        # Verify User B sees only their 1 task
+        tasks_b = await TaskRepository.list_user_tasks(user_b)
+        self.assertEqual(len(tasks_b), 1)
+        self.assertEqual(tasks_b[0]["session_name"], "sessions/sess-333")
+
+        # Verify ownership checks
+        self.assertTrue(await TaskRepository.is_task_owned_by_user(user_a, "sessions/sess-111"))
+        self.assertTrue(await TaskRepository.is_task_owned_by_user(user_a, "sess-111"))
+        self.assertFalse(await TaskRepository.is_task_owned_by_user(user_a, "sess-333"))
+        self.assertFalse(await TaskRepository.is_task_owned_by_user(user_a, "sessions/sess-333"))
+
+        self.assertTrue(await TaskRepository.is_task_owned_by_user(user_b, "sess-333"))
+        self.assertFalse(await TaskRepository.is_task_owned_by_user(user_b, "sess-111"))
 
     async def asyncTearDown(self):
         try:

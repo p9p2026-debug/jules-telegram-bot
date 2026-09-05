@@ -17,7 +17,7 @@ from telegram.ext import (
     filters
 )
 import config
-from database.repositories import SessionRepository, SettingsRepository, UserRepository
+from database.repositories import SessionRepository, SettingsRepository, TaskRepository, UserRepository
 from services.format_service import FormatService
 from services.incoming_service import extract_incoming_message
 from services.jules_service import JulesService
@@ -36,7 +36,7 @@ from utils.keyboards import (
 logger = logging.getLogger(__name__)
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handles /start command: registers user and introduces Jules AI."""
+    """Handles /start command: registers user with a minimal, clean, professional greeting."""
     user = update.effective_user
     user_db = await UserRepository.get_or_create(
         user_id=user.id,
@@ -49,37 +49,19 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await update.message.reply_text(reason)
         return
 
-    active_session = await SessionRepository.get_active_session(user.id)
-    model_choice = user_db.get("selected_model", config.MODEL_CHOICE_FLASH)
-    if model_choice == config.MODEL_CHOICE_PRO:
-        model_display = config.MODEL_PRO_NAME
-    elif model_choice == config.MODEL_CHOICE_AGENT:
-        model_display = config.MODEL_AGENT_NAME
-    else:
-        model_display = config.MODEL_FLASH_NAME
-
     is_admin = PermissionService.is_admin(user.id)
+    has_custom_key = bool(user_db.get("custom_api_key"))
 
     welcome_text = (
-        f"🤖 <b>أهلاً بك يا {user.first_name} في المساعد البرمجي ووكيل Jules المتطور!</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━━\n"
-        "أنا مساعدك السحابي المتكامل للبرمجة وتطوير الأنظمة، مدعوم بأحدث تقنيات Google Jules والرسائل الغنية (Rich Messages 2026).\n\n"
-        "✨ <b>القدرات والخدمات المتاحة:</b>\n"
-        "• <b>وكيل Jules المستقل:</b> تنفيذ مهام برمجية شاملة، تصفح الويب، التقاط لقطات الشاشة الحية، وفتح Pull Requests.\n"
-        "• <b>محادثة حية مستمرة (Multi-Turn):</b> يمكنك التعليق على أي مهمة ومتابعة التعديلات وسحب المخرجات فوراً في نفس الشات.\n"
-        "• <b>دعم المستودعات أو الشات المباشر:</b> ربط مستودعات GitHub عبر <code>/repos</code>، أو الدردشة المباشرة دون مستودع عبر <code>/repos none</code>.\n"
-        "• <b>إرسال واستقبال الملفات:</b> استقبال مستندات PDF و Markdown وأكواد البرمجة، وتوليد ملفات ومخرجات جاهزة للتحميل.\n"
-        "• <b>نظام الرتش الذكي (2026):</b> دعم كامل لترتيب الجداول، اتجاه النصوص العربية RTL، والأكواد المنسقة.\n\n"
-        f"⚡ <b>النموذج المعتمد:</b> <code>{model_display}</code>\n"
-        f"💬 <b>الجلسة النشطة:</b> <code>{active_session['title']}</code>\n"
-        "━━━━━━━━━━━━━━━━━━━━━\n"
-        "💡 <i>اضغط على أي زر في اللوحة أدناه أو أرسل استفسارك أو ملفك وسأبدأ فوراً!</i>"
+        f"أهلاً بك يا <b>{html.escape(user.first_name or 'صديقي')}</b>! 👋\n\n"
+        "أنا مساعدك الذكي لتطوير البرمجيات وهندسة الأنظمة.\n"
+        "أرسل استفسارك، كودك، أو ملفك وسأبدأ بالعمل فوراً."
     )
 
     await update.message.reply_text(
         text=welcome_text,
         parse_mode=ParseMode.HTML,
-        reply_markup=get_main_keyboard(is_admin)
+        reply_markup=get_main_keyboard(is_admin, has_custom_key)
     )
 
 
@@ -93,42 +75,26 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 
     is_admin = PermissionService.is_admin(user_id)
 
-    help_text = (
-        "📖 <b>دليل استخدام وأوامر المساعد الذكي ووكيل Jules:</b>\n"
-        "━━━━━━━━━━━━━━━━━━━━━\n"
-        "⚡ <b>النماذج والذكاء الاصطناعي:</b>\n"
-        "• <code>/model</code> - التبديل التفاعلي بين نماذج Jules الرسمية (<code>gemini-3.6-flash</code> و <code>gemini-3.1-pro</code>) ونماذج Google AI Studio.\n"
-        "• <code>/repos</code> - استعراض مستودعات GitHub واختيار المستودع المستهدف.\n"
-        "• <code>/repos none</code> - تفعيل وضع Jules المباشر للدردشة وتصفح الويب وسحب السكرينات دون الحاجة لمستودع.\n"
-        "• <code>/repos clear</code> - إلغاء ربط المستودع الحالي.\n"
-        "• <code>/github &lt;token&gt;</code> (أو <code>/gh</code>) - ضبط توكن GitHub الشخصي لسحب ملفات الـ PRs وتحميلها في الشات.\n"
-        "• <code>/tasks</code> - قائمة المهام السحابية التفاعلية مع أزرار فورية للرد والمتابعة، اعتماد الخطط البرمجية، وسحب الملفات والسكرينات.\n\n"
-        "💬 <b>إدارة الجلسات والمحادثة المستمرة:</b>\n"
-        "• <code>/new</code> - بدء مهمة وجلسة جديدة كلياً وتصفير سياق المحادثة.\n"
-        "• <code>/sessions</code> - استعراض الجلسات السابقة والتبديل بينها أو حذفها.\n"
-        "• <b>المتابعة التلقائية:</b> يمكنك الرد أو التعليق على أي مهمة سابقة وسيتابع معك Jules التعديلات في نفس المهمة.\n\n"
-        "🔑 <b>مفاتيح API:</b>\n"
-        "• <code>/apikey &lt;key&gt;</code> - تعيين مفتاح Jules الرسمي (يبدأ بـ <code>AQ.</code>) أو مفتاح Google AI Studio (يبدأ بـ <code>AIza</code>).\n"
-        "• <code>/apikey clear</code> - إزالة مفتاحك الخاص والعودة للمفتاح الافتراضي للبوت.\n\n"
-        "📁 <b>إرسال واستقبال الملفات والوسائط:</b>\n"
-        "• <b>استقبال الملفات:</b> أرسل أي ملف كود (<code>.py</code>, <code>.js</code>, <code>.html</code>, إلخ) أو <code>.pdf</code> أو <code>.docx</code> أو صورة وسيقوم المساعد بتحليلها فوراً.\n"
-        "• <b>استلام المخرجات:</b> يرسل لك البوت لقطات الشاشة المباشرة والملفات الناتجة من Jules فور توليدها كملفات وصور قابلة للتحميل.\n\n"
-        "📝 <b>المنشورات والرسائل الغنية (Rich Messages 2026):</b>\n"
-        "• <code>/compose</code> - بدء محرر المنشور المركب لتجميع نصوص وجداول وصور ونشرها كرسالة غنية واحدة.\n"
-        "• البوت مجهز لاستقبال وقراءة التنسيقات الغنية المباشرة والكيانات (Bold, Italic, Tables, RTL, Blockquotes).\n"
-    )
-
-    if is_admin:
-        help_text += (
-            "\n👑 <b>أوامر الإدارة (Admins Only):</b>\n"
-            "• <code>/admin</code> - فتح لوحة التحكم الرئيسية والصلاحيات.\n"
-            "• <code>/search &lt;id/username&gt;</code> - البحث عن مستخدم وإدارة صلاحياته وحظره.\n"
-            "• <code>/adminguide</code> - فتح دليل الأدمن الشامل.\n"
+    if not is_admin:
+        await update.message.reply_text(
+            "ℹ️ <b>المساعد الذكي:</b>\n\n"
+            "• أرسل استفسارك أو كودك أو ملفك في الشات وسأبدأ بالعمل عليه فوراً.\n"
+            "• لبدء موضوع جديد: اضغط على زر <b>💬 جلسة جديدة</b> في اللوحة أدناه.",
+            parse_mode=ParseMode.HTML
         )
+        return
 
-    help_text += "━━━━━━━━━━━━━━━━━━━━━"
-
-    await update.message.reply_text(help_text, parse_mode=ParseMode.HTML)
+    admin_help_text = (
+        "👑 <b>لوحة مساعدة إدارة النظام (Admins Only):</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━━\n"
+        "• <code>/admin</code> - فتح لوحة التحكم الرئيسية والصلاحيات.\n"
+        "• <code>/search &lt;id/username&gt;</code> - البحث عن مستخدم وإدارة صلاحياته.\n"
+        "• <code>/adminguide</code> - فتح دليل الأدمن الشامل.\n"
+        "• <code>/repos</code> - استعراض مستودعات GitHub المتصلة.\n"
+        "• <code>/apikey</code> - إدارة مفاتيح النظام الخاصة والعامة.\n"
+        "━━━━━━━━━━━━━━━━━━━━━"
+    )
+    await update.message.reply_text(admin_help_text, parse_mode=ParseMode.HTML)
 
 
 async def model_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -139,13 +105,13 @@ async def model_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         await update.message.reply_text(reason)
         return
 
-    # Direct model setting via command argument: e.g. /model gemini-3.7-flash, /model gemini-3.1-pro
+    # Direct model setting via command argument: e.g. /model gemini-3.6-flash, /model gemini-3.1-pro
     if context.args:
         raw_arg = context.args[0].strip().lower()
         if raw_arg in ["agent", "jules"]:
             canonical = "agent"
-            display = "🛠️ وكيل المستودعات (Jules Agent)"
-            extra_note = "\n🛠️ تم تفعيل وكيل المستودعات. حدد مستودعك عبر <code>/repos</code> ثم أرسل طلبك."
+            display = "🛠️ وكيل هندسة البرمجيات المستقل"
+            extra_note = "\n🛠️ تم تفعيل وضع وكيل البرمجة المستقل."
         else:
             canonical = JulesService.resolve_model_id(raw_arg)
             display = canonical
@@ -162,17 +128,17 @@ async def model_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     user = await UserRepository.get_by_id(user_id)
     current_model = user.get("selected_model", "gemini-3.6-flash") if user else "gemini-3.6-flash"
-    resolved_current = "🛠️ وكيل المستودعات (Jules Agent)" if current_model == "agent" else JulesService.resolve_model_id(current_model)
+    resolved_current = "🛠️ وكيل هندسة البرمجيات المستقل" if current_model == "agent" else JulesService.resolve_model_id(current_model)
 
     text = (
-        "🎯 <b>قائمة النماذج الرسمية المعتمدة لـ Google:</b>\n"
+        "🎯 <b>قائمة النماذج والقدرات المعتمدة:</b>\n"
         "━━━━━━━━━━━━━━━━━━━━━\n"
         f"• <b>النموذج النشط حالياً:</b> <code>{resolved_current}</code>\n"
         "━━━━━━━━━━━━━━━━━━━━━\n"
-        "🛠️ <b>نماذج Jules API الرسمية (حصرياً - نموذجان فقط):</b>\n"
+        "🛠️ <b>نماذج محرك الوكيل المتقدم:</b>\n"
         "• <code>gemini-3.6-flash</code>\n"
         "• <code>gemini-3.1-pro</code>\n\n"
-        "⚡ <b>نماذج Google AI Studio:</b>\n"
+        "⚡ <b>نماذج المعالجة المباشرة:</b>\n"
         "• <code>gemini-3.1-pro</code> (النموذج الوحيد Pro)\n"
         "• <code>gemini-3.1-flash</code>\n"
         "• <code>gemini-3.5-flash</code>\n"
@@ -285,7 +251,7 @@ async def apikey_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
             "🔑 <b>لوحة إدارة مفاتيح API والنماذج:</b>\n"
             "━━━━━━━━━━━━━━━━━━━━━\n"
             f"⚡ <b>مفتاح الدردشة الفورية (Gemini Studio):</b>\n{gemini_txt}\n\n"
-            f"🛠️ <b>مفتاح الوكيل البرمجي (Jules Agent):</b>\n{jules_txt}\n\n"
+            f"🛠️ <b>مفتاح الوكيل البرمجي المتقدم:</b>\n{jules_txt}\n\n"
             f"🎯 <b>النموذج / الوضع النشط حالياً:</b>\n<code>{model_display}</code>\n"
             "━━━━━━━━━━━━━━━━━━━━━\n"
             "💡 <b>طرق الإدخال السريعة:</b>\n"
@@ -436,23 +402,33 @@ async def repos_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             await SettingsRepository.set_setting(f"user_source:{user_id}", "")
             await UserRepository.update_model(user_id, "gemini-3.6-flash")
             await update.message.reply_text(
-                "💬 <b>تم فك ارتباط المستودع وتفعيل وضع الدردشة المباشرة مع Jules:</b>\n"
+                "💬 <b>تم فك ارتباط المستودع وتفعيل وضع الدردشة البرمجية المباشرة:</b>\n"
                 "━━━━━━━━━━━━━━━━━━━━━\n"
-                "• النموذج الحالي: <code>gemini-3.6-flash</code> (Jules Chat).\n"
-                "• يمكنك الآن مراسلة Jules مباشرة في الشات وسيجيبك فوراً دون فتح Pull Requests على GitHub!",
+                "• يمكنك الآن إرسال طلباتك وأكوادك مباشرة في الشات وسأجيبك فوراً!",
                 parse_mode=ParseMode.HTML
             )
             return
 
+    # Strict Privacy: Only Admin or users with personal custom API key can browse repositories
+    is_admin = PermissionService.is_admin(user_id)
+    user_key = await SettingsRepository.get_setting(f"user_jules_key:{user_id}", "")
+    if not is_admin and not user_key:
+        await update.message.reply_text(
+            "ℹ️ <b>الوضع المباشر مفعل تلقائياً:</b>\n\n"
+            "• يمكنك إرسال استفساراتك ومهامك البرمجية في الشات مباشرة.\n"
+            "• ميزة ربط المستودعات الخاصة تتطلب إدخال مفتاحك الخاص عبر <code>/apikey</code>.",
+            parse_mode=ParseMode.HTML
+        )
+        return
+
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
     try:
-        sources = await JulesApiClient.list_sources()
+        effective_key = user_key or (config.JULES_API_KEY if is_admin else None)
+        sources = await JulesApiClient.list_sources(api_key=effective_key)
         if not sources:
             await update.message.reply_text(
-                "ℹ️ <b>لم يتم العثور على مستودعات متصلة في Jules</b>\n\n"
-                "• تأكد من ربط حساب GitHub بمستودعاتك عبر موقع Jules:\n"
-                "https://jules.google.com\n"
-                "• وتأكد من ضبط المتغير البيئي <code>JULES_API_KEY</code> في الخادم.",
+                "ℹ️ لم يتم العثور على مستودعات متصلة بحسابك.\n"
+                "يمكنك استخدام الوضع المباشر بدون مستودع عبر <code>/repos none</code>.",
                 parse_mode=ParseMode.HTML
             )
             return
@@ -460,20 +436,18 @@ async def repos_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         active_source = await SettingsRepository.get_setting(f"user_source:{user_id}", "")
         keyboard = get_sources_keyboard(sources, active_source)
         await update.message.reply_text(
-            "📁 <b>مستودعات GitHub المتصلة بالوكيل المستقل:</b>\n"
+            "📁 <b>المستودعات البرمجية المتصلة:</b>\n"
             "اضغط على المستودع المطلوب لتحديده كوجهة للمهام البرمجية القادمة:",
             parse_mode=ParseMode.HTML,
             reply_markup=keyboard
         )
-    except JulesApiException as j_err:
-        await update.message.reply_text(f"⚠️ <b>خطأ في واجهة Jules API:</b>\n{j_err}", parse_mode=ParseMode.HTML)
     except Exception as exc:
         logger.exception("Error in /repos: %s", exc)
-        await update.message.reply_text(f"⚠️ تعذر جلب قائمة المستودعات: {exc}")
+        await update.message.reply_text(f"⚠️ تعذر استعراض المستودعات: {exc}")
 
 
 async def tasks_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handles /tasks: lists recent coding sessions on Jules API."""
+    """Handles /tasks: lists recent coding sessions strictly isolated per user."""
     user_id = update.effective_user.id
     allowed, reason = await PermissionService.check_access(user_id, config.FEATURE_AUTONOMOUS_AGENT)
     if not allowed:
@@ -482,92 +456,71 @@ async def tasks_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
 
     await context.bot.send_chat_action(chat_id=update.effective_chat.id, action=ChatAction.TYPING)
     try:
-        api_key = await JulesService.get_effective_api_key(user_id, key_type="jules")
-        sessions = await JulesApiClient.list_sessions(api_key=api_key)
-        if not sessions:
-            await update.message.reply_text("ℹ️ لا توجد مهام برمجية سابقة مسجلة على الوكيل.")
+        # STRICT PRIVACY: Query ONLY tasks created by this specific user
+        user_tasks = await TaskRepository.list_user_tasks(user_id, limit=6)
+        if not user_tasks:
+            await update.message.reply_text("ℹ️ ليس لديك أي مهام سابقة مسجلة حتى الآن. أرسل طلبك للبدء فوراً.")
             return
 
-        lines = ["📋 <b>آخر المهام البرمجية لوكيل المستودعات (Jules):</b>\n━━━━━━━━━━━━━━━━━━━━━"]
-        for s in sessions[:8]:
-            if not isinstance(s, dict):
-                continue
-            name = str(s.get("name", "")).replace("sessions/", "")
-            state = str(s.get("state", "UNKNOWN")).upper()
-            prompt = str(s.get("prompt") or s.get("title") or "بدون عنوان")[:50]
-            sess_url = s.get("url") or f"https://jules.google.com/session/{name}"
-
-            # Safe extraction of pull request URL from outputs
-            pr = ""
-            raw_outputs = s.get("outputs")
-            if isinstance(raw_outputs, list):
-                for item in raw_outputs:
-                    if isinstance(item, dict) and "pullRequest" in item:
-                        pr_dict = item.get("pullRequest")
-                        if isinstance(pr_dict, dict):
-                            pr = pr_dict.get("url") or pr_dict.get("htmlUrl") or ""
-                            if pr:
-                                break
-            elif isinstance(raw_outputs, dict):
-                pr_dict = raw_outputs.get("pullRequest")
-                if isinstance(pr_dict, dict):
-                    pr = pr_dict.get("url") or pr_dict.get("htmlUrl") or ""
-
-            # Arabic status indicators
-            if state in ["COMPLETED", "SUCCEEDED"]:
-                state_emoji = "✅"
-                state_label = "مكتملة بنجاح"
-            elif state in ["IN_PROGRESS", "RUNNING"]:
-                state_emoji = "⚙️"
-                state_label = "قيد التنفيذ"
-            elif state in ["STARTING", "INITIALIZING"]:
-                state_emoji = "⏳"
-                state_label = "جاري البدء"
-            elif "FEEDBACK" in state or "WAITING" in state or "APPROVAL" in state:
-                state_emoji = "💬"
-                state_label = "بانتظار ردك أو اعتماد الخطة"
-            elif state in ["FAILED", "CANCELLED"]:
-                state_emoji = "❌"
-                state_label = "فشلت أو تم الإلغاء"
-            else:
-                state_emoji = "🔹"
-                state_label = state
-
-            links = []
-            if pr:
-                links.append(f"<a href='{pr}'>Pull Request 🚀</a>")
-            if sess_url:
-                links.append(f"<a href='{sess_url}'>عرض في منصة Jules ↗️</a>")
-            links_part = f"\n  🔗 {' | '.join(links)}" if links else ""
-
-            lines.append(f"{state_emoji} <b>#{name}</b>: {prompt}\n  الحالة: <code>{state_label}</code>{links_part}")
-
+        api_key = await JulesService.get_effective_api_key(user_id, key_type="jules")
+        lines = ["📋 <b>مهامك السابقة:</b>\n━━━━━━━━━━━━━━━━━━━━━"]
         keyboard_buttons = []
-        for s in sessions[:5]:
-            if not isinstance(s, dict):
-                continue
-            name = str(s.get("name", "")).replace("sessions/", "")
-            prompt_short = str(s.get("prompt") or s.get("title") or "مهمة")[:20]
-            state = str(s.get("state", "UNKNOWN")).upper()
 
-            # Row with reply and fetch artifacts
+        for t in user_tasks:
+            sess_name = t["session_name"]
+            clean_id = sess_name.replace("sessions/", "")
+            prompt_full = t.get("prompt") or "مهمة برمجية"
+            prompt_short = prompt_full[:40].replace("\n", " ")
+
+            state_emoji = "🔹"
+            state_label = "قيد المتابعة"
+            pr = ""
+            try:
+                s = await JulesApiClient.get_session(sess_name, api_key=api_key)
+                state = str(s.get("state", "UNKNOWN")).upper()
+                if state in ["COMPLETED", "SUCCEEDED"]:
+                    state_emoji = "✅"
+                    state_label = "مكتملة بنجاح"
+                elif state in ["IN_PROGRESS", "RUNNING"]:
+                    state_emoji = "⚙️"
+                    state_label = "قيد التنفيذ"
+                elif state in ["STARTING", "INITIALIZING"]:
+                    state_emoji = "⏳"
+                    state_label = "جاري البدء"
+                elif "FEEDBACK" in state or "WAITING" in state or "APPROVAL" in state:
+                    state_emoji = "💬"
+                    state_label = "بانتظار ردك أو اعتماد الخطة"
+                elif state in ["FAILED", "CANCELLED"]:
+                    state_emoji = "❌"
+                    state_label = "فشلت أو تم الإلغاء"
+
+                raw_outputs = s.get("outputs")
+                if isinstance(raw_outputs, list):
+                    for item in raw_outputs:
+                        if isinstance(item, dict) and "pullRequest" in item:
+                            pr_dict = item.get("pullRequest")
+                            if isinstance(pr_dict, dict):
+                                pr = pr_dict.get("url") or pr_dict.get("htmlUrl") or ""
+                                if pr:
+                                    break
+            except Exception:
+                pass
+
+            pr_part = f"\n  🔗 <a href='{pr}'>Pull Request 🚀</a>" if pr else ""
+            lines.append(f"{state_emoji} <b>#{clean_id[:8]}</b>: {prompt_short}\n  الحالة: <code>{state_label}</code>{pr_part}")
+
+            btn_label = prompt_full[:14].replace("\n", " ")
             keyboard_buttons.append([
-                InlineKeyboardButton(f"💬 رد #{name[:6]}: {prompt_short}", callback_data=f"jules:resume:{name}"),
-                InlineKeyboardButton(f"📥 مخرجات #{name[:6]}", callback_data=f"jules:fetch_artifacts:{name}")
+                InlineKeyboardButton(f"💬 رد #{clean_id[:6]}: {btn_label}", callback_data=f"jules:resume:{clean_id}"),
+                InlineKeyboardButton(f"📥 مخرجات #{clean_id[:6]}", callback_data=f"jules:fetch_artifacts:{clean_id}")
             ])
-
-            # If awaiting plan approval, add direct approval button
-            if "APPROVAL" in state or "WAITING" in state:
-                keyboard_buttons.append([
-                    InlineKeyboardButton(f"✅ اعتماد خطة #{name[:6]} فوراً", callback_data=f"jules:approve:{name}")
-                ])
 
         keyboard_buttons.append([
             InlineKeyboardButton("➕ بدء مهمة جديدة كلياً", callback_data="user:new_jules_task"),
             InlineKeyboardButton("❌ إغلاق", callback_data="user:close")
         ])
 
-        lines.append("━━━━━━━━━━━━━━━━━━━━━\n💡 <i>اضغط على '💬 رد' لأي مهمة لمتابعتها والتعليق عليها في الشات، أو '📥 مخرجات' لجلب صورها وملفاتها فوراً إلى تيليجرام.</i>")
+        lines.append("━━━━━━━━━━━━━━━━━━━━━\n💡 <i>اضغط على '💬 رد' لأي مهمة لمتابعتها في الشات، أو '📥 مخرجات' لسحب صورها وملفاتها فوراً إلى تيليجرام.</i>")
         await update.message.reply_text(
             "\n\n".join(lines),
             parse_mode=ParseMode.HTML,
@@ -575,7 +528,7 @@ async def tasks_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
             disable_web_page_preview=True
         )
     except JulesApiException as j_err:
-        await update.message.reply_text(f"⚠️ <b>خطأ في واجهة Jules API:</b>\n{j_err}", parse_mode=ParseMode.HTML)
+        await update.message.reply_text(f"⚠️ <b>خطأ في محرك البرمجة:</b>\n{j_err}", parse_mode=ParseMode.HTML)
     except Exception as exc:
         logger.exception("Error in /tasks: %s", exc)
         await update.message.reply_text(f"⚠️ تعذر استرجاع قائمة المهام: {exc}")
@@ -720,8 +673,8 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     # Group / Supergroup filter: only process if replied to bot, mentioned, or tapped a button
     is_group = update.effective_chat.type in ["group", "supergroup"]
     keyboard_shortcuts = {
-        "⚡ تبديل النموذج", "💬 جلسة جديدة", "📁 مستودعات GitHub", "📂 مستودعاتي",
-        "📋 مهامي البرمجية", "📋 المهام", "📂 جلساتي", "🔑 مفتاح API",
+        "⚡ تبديل النموذج", "💬 جلسة جديدة", "📁 مستودعات GitHub", "📂 مستودعاتي", "📁 المستودعات البرمجية",
+        "📋 مهامي البرمجية", "📋 المهام", "📋 مهامي السابقة", "📂 جلساتي", "🔑 مفتاح API",
         "ℹ️ المساعدة والمعلومات", "🛠️ لوحة تحكم الأدمن (/admin)"
     }
     bot_username = (context.bot.username or "").lower()
@@ -748,10 +701,10 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     elif text == "💬 جلسة جديدة":
         await new_session_command(update, context)
         return
-    elif text in ["📁 مستودعات GitHub", "📂 مستودعاتي"]:
+    elif text in ["📁 مستودعات GitHub", "📂 مستودعاتي", "📁 المستودعات البرمجية"]:
         await repos_command(update, context)
         return
-    elif text in ["📋 مهامي البرمجية", "📋 المهام"]:
+    elif text in ["📋 مهامي البرمجية", "📋 المهام", "📋 مهامي السابقة"]:
         await tasks_command(update, context)
         return
     elif text == "📂 جلساتي":
@@ -781,9 +734,9 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             await UserRepository.update_custom_api_key(user.id, key_val)
             await UserRepository.update_model(user.id, config.MODEL_CHOICE_AGENT)
             await update.message.reply_text(
-                "✅ <b>تم حفظ وتفعيل مفتاح Google Jules الرسمي بنجاح!</b>\n"
+                "✅ <b>تم حفظ وتفعيل مفتاح محرك الوكيل البرمجي بنجاح!</b>\n"
                 f"• تم تحويل الوضع إلى: <b>{config.MODEL_AGENT_NAME}</b>\n\n"
-                "يمكنك استعراض مستودعاتك عبر <code>/repos</code> أو إرسال طلباتك البرمجية في الشات مباشرة.",
+                "يمكنك استعراض مستودعاتك أو إرسال طلباتك البرمجية في الشات مباشرة.",
                 parse_mode=ParseMode.HTML
             )
             return
@@ -877,8 +830,8 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
                     )
                 else:
                     await update.message.reply_text(
-                        "⚠️ <b>لم يتم العثور على مستودعات متصلة في Jules</b>\n"
-                        "يمكنك استخدام Jules مباشرة دون مستودع عبر <code>/repos none</code>، أو ربط مستودعك عبر https://jules.google.com.",
+                        "⚠️ <b>لم يتم العثور على مستودعات برمجية متصلة</b>\n"
+                        "يمكنك المتابعة مباشرة دون مستودع عبر <code>/repos none</code> أو اختيار نموذج شات عبر <code>/model</code>.",
                         parse_mode=ParseMode.HTML
                     )
             except Exception as exc:
@@ -890,7 +843,7 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         if active_sess:
             clean_id = active_sess.replace("sessions/", "")
             status_msg = await update.message.reply_text(
-                f"💬 <b>جاري إرسال تعليقك إلى Jules (مهمة #{clean_id[:8]})...</b>\n"
+                f"💬 <b>جاري متابعة المهمة البرمجية (#{clean_id[:8]})...</b>\n"
                 f"📝 <b>التعليق:</b> <i>{text[:100]}</i>\n"
                 "━━━━━━━━━━━━━━━━━━━━━\n"
                 "⏳ جاري متابعة الرد وتنفيذ التعديلات...",
@@ -933,7 +886,7 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
             repo_display = active_source.replace("sources/github-", "").replace("sources/", "")
 
         status_msg = await update.message.reply_text(
-            f"🚀 <b>جاري إرسال المهمة إلى Jules...</b>\n"
+            f"🚀 <b>جاري معالجة وتنفيذ طلبك برمجياً...</b>\n"
             f"📁 <b>البيئة:</b> <code>{repo_display}</code>\n"
             f"📝 <b>الطلب:</b> <i>{text[:100]}</i>\n"
             "━━━━━━━━━━━━━━━━━━━━━\n"
@@ -957,6 +910,7 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
             session_name = session_obj.get("name")
             await SettingsRepository.set_setting(f"active_jules_sess:{user.id}", session_name)
+            await TaskRepository.add_task(user.id, session_name, ai_prompt, repo_display)
             await TaskMonitorService.start_monitoring(
                 bot=context.bot,
                 chat_id=update.effective_chat.id,
@@ -970,7 +924,7 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         except Exception as exc:
             logger.exception("Error launching Jules API session: %s", exc)
             await status_msg.edit_text(
-                f"❌ <b>فشل إطلاق مهمة Jules:</b>\n<code>{exc}</code>\n\n"
+                f"❌ <b>تعذر بدء المهمة البرمجية:</b>\n<code>{exc}</code>\n\n"
                 "تحقق من صلاحية المفتاح عبر <code>/apikey</code>.",
                 parse_mode=ParseMode.HTML
             )
@@ -1139,7 +1093,7 @@ async def document_message_handler(update: Update, context: ContextTypes.DEFAULT
         effective_prompt = f"{caption_text}\n(الملف المرفق: {file_name})"
 
         status_msg = await update.message.reply_text(
-            f"🚀 <b>جاري إرسال الملف والمهمة إلى Jules...</b>\n"
+            f"🚀 <b>جاري معالجة الملف وتنفيذ المهمة برمجياً...</b>\n"
             f"📁 <b>المستهدف:</b> <code>{repo_display}</code>\n"
             f"📄 <b>الملف:</b> <code>{file_name}</code>\n"
             f"📝 <b>الطلب:</b> <i>{caption_text[:100]}</i>\n"
@@ -1164,6 +1118,7 @@ async def document_message_handler(update: Update, context: ContextTypes.DEFAULT
 
             session_name = session_obj.get("name")
             await SettingsRepository.set_setting(f"active_jules_sess:{user.id}", session_name)
+            await TaskRepository.add_task(user.id, session_name, effective_prompt, repo_display)
             await TaskMonitorService.start_monitoring(
                 bot=context.bot,
                 chat_id=update.effective_chat.id,
@@ -1177,7 +1132,7 @@ async def document_message_handler(update: Update, context: ContextTypes.DEFAULT
         except Exception as exc:
             logger.exception("Error launching Jules API session for document: %s", exc)
             await status_msg.edit_text(
-                f"❌ <b>فشل إطلاق مهمة Jules:</b>\n<code>{exc}</code>",
+                f"❌ <b>تعذر بدء المهمة البرمجية:</b>\n<code>{exc}</code>",
                 parse_mode=ParseMode.HTML
             )
         return
@@ -1250,7 +1205,7 @@ async def user_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
 
         if model_target in ["agent", config.MODEL_CHOICE_AGENT]:
             canonical_to_save = "agent"
-            display_name = "🛠️ وكيل المستودعات (Jules Agent)"
+            display_name = "🛠️ وكيل هندسة البرمجيات المستقل"
         else:
             canonical_to_save = JulesService.resolve_model_id(model_target)
             display_name = canonical_to_save
@@ -1290,9 +1245,9 @@ async def user_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
         context.user_data["awaiting_api_key"] = key_type
         if key_type == "jules":
             await query.message.reply_text(
-                "🛠️ <b>إعداد مفتاح Google Jules الرسمي:</b>\n"
-                "أرسل الآن مفتاح Jules الخاص بك في الشات (يبدأ بـ <code>AQ.Ab...</code>):\n\n"
-                "💡 يتم استخراجه من: https://jules.google.com/settings",
+                "🛠️ <b>إعداد مفتاح محرك الوكيل المتقدم:</b>\n"
+                "أرسل الآن المفتاح الخاص بك في الشات (يبدأ بـ <code>AQ.Ab...</code>):\n\n"
+                "💡 سيتم حفظ المفتاح وتشفيره واستخدامه لمهامك البرمجية.",
                 parse_mode=ParseMode.HTML
             )
         else:
@@ -1342,11 +1297,11 @@ async def user_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
             except Exception:
                 pass
             await query.message.reply_text(
-                "💬 <b>تم تفعيل وضع الدردشة المباشرة مع Jules (بدون مستودع):</b>\n"
+                "💬 <b>تم تفعيل وضع المعالجة المباشرة (بدون مستودع):</b>\n"
                 "━━━━━━━━━━━━━━━━━━━━━\n"
-                "• تم فك ارتباط أي مستودع GitHub.\n"
-                "• تم ضبط النموذج على: <code>gemini-3.6-flash</code> (Jules Chat).\n"
-                "• يمكنك الآن إرسال استفساراتك البرمجية والأسئلة مباشرة وسيجيبك Jules فوراً في الشات دون فتح Pull Requests!",
+                "• تم فك ارتباط أي مستودع برمجي.\n"
+                "• تم ضبط النموذج على: <code>gemini-3.6-flash</code>.\n"
+                "• يمكنك الآن إرسال استفساراتك ومهامك مباشرة وسيجيبك المساعد فوراً في الشات!",
                 parse_mode=ParseMode.HTML
             )
             return
@@ -1411,12 +1366,21 @@ async def user_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
         await query.answer("تم بدء جلسة جديدة!")
         await query.message.reply_text(
             f"✨ <b>تم بدء مهمة وجلسة عمل جديدة كلياً!</b>\n"
-            "أرسل طلبك أو سؤالك في الشات وسيبدأ Jules بمهمة جديدة منفصلة.",
+            "أرسل طلبك أو استفسارك في الشات وسأبدأ بمهمة جديدة منفصلة.",
             parse_mode=ParseMode.HTML
         )
 
     elif data.startswith("jules:approve:"):
         clean_id = data.replace("jules:approve:", "")
+        is_admin = PermissionService.is_admin(user_id)
+        if not is_admin:
+            user = await UserRepository.get_by_id(user_id)
+            has_custom_key = bool(user and user.get("custom_api_key"))
+            if not has_custom_key:
+                owned = await TaskRepository.is_task_owned_by_user(user_id, clean_id)
+                if not owned:
+                    await query.answer("⛔ لا تملك صلاحية اعتماد هذه المهمة.", show_alert=True)
+                    return
         api_key = await JulesService.get_effective_api_key(user_id, key_type="jules")
         try:
             await JulesApiClient.approve_plan(clean_id, api_key=api_key)
@@ -1442,16 +1406,34 @@ async def user_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
 
     elif data.startswith("jules:resume:") or data.startswith("jules:reply:"):
         clean_id = data.split(":")[2]
+        is_admin = PermissionService.is_admin(user_id)
+        if not is_admin:
+            user = await UserRepository.get_by_id(user_id)
+            has_custom_key = bool(user and user.get("custom_api_key"))
+            if not has_custom_key:
+                owned = await TaskRepository.is_task_owned_by_user(user_id, clean_id)
+                if not owned:
+                    await query.answer("⛔ لا تملك صلاحية الوصول إلى هذه المهمة.", show_alert=True)
+                    return
         await SettingsRepository.set_setting(f"active_jules_sess:{user_id}", f"sessions/{clean_id}")
         await query.answer("تم الاتصال بالمهمة!")
         await query.message.reply_text(
-            f"💬 <b>أنت الآن متصل بالمهمة #{clean_id}:</b>\n\n"
-            "أي تعليق أو رسالة ترسلها الآن في الشات ستصل إلى Jules في هذه المهمة مباشرة، وسيقوم بالرد عليك وتنفيذ التعديلات!",
+            f"💬 <b>أنت الآن متصل بالمهمة #{clean_id[:8]}:</b>\n\n"
+            "أي تعليق أو رسالة ترسلها الآن في الشات ستصل مباشرة إلى بيئة عمل هذه المهمة لمتابعة التعديلات والرد عليك!",
             parse_mode=ParseMode.HTML
         )
 
     elif data.startswith("jules:fetch_artifacts:"):
         clean_id = data.replace("jules:fetch_artifacts:", "")
+        is_admin = PermissionService.is_admin(user_id)
+        if not is_admin:
+            user = await UserRepository.get_by_id(user_id)
+            has_custom_key = bool(user and user.get("custom_api_key"))
+            if not has_custom_key:
+                owned = await TaskRepository.is_task_owned_by_user(user_id, clean_id)
+                if not owned:
+                    await query.answer("⛔ لا تملك صلاحية الوصول إلى مخرجات هذه المهمة.", show_alert=True)
+                    return
         api_key = await JulesService.get_effective_api_key(user_id, key_type="jules")
         await SettingsRepository.set_setting(f"active_jules_sess:{user_id}", f"sessions/{clean_id}")
         await query.answer("جاري سحب المخرجات والملفات...")
@@ -1480,7 +1462,7 @@ async def user_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
             await query.message.reply_text(
                 f"✅ <b>تم استخراج مخرجات وسكرينات المهمة #{clean_id[:8]} بنجاح!</b>\n\n"
                 "💬 <b>أنت الآن متصل بهذه المهمة تلقائياً:</b>\n"
-                "أي تعليق أو طلب ترسله في الشات الآن (مثل 'هات الصور' أو 'عدل كذا') سيتابع معك Jules تنفيذه في نفس بيئة العمل هذه دون فتح مهمة جديدة.",
+                "أي تعليق أو طلب ترسله في الشات الآن (مثل 'استخرج الملفات' أو 'عدل كذا') ستتم متابعته وتنفيذه في نفس بيئة العمل هذه دون فتح مهمة جديدة.",
                 parse_mode=ParseMode.HTML
             )
         except Exception as exc:

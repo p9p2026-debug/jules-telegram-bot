@@ -145,10 +145,24 @@ async def init_db() -> None:
             );
             """)
 
+            # User Tasks Table (Ensures strict per-user task isolation)
+            conn.execute("""
+            CREATE TABLE IF NOT EXISTS user_tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id INTEGER NOT NULL,
+                session_name TEXT NOT NULL UNIQUE,
+                prompt TEXT,
+                repo_name TEXT DEFAULT NULL,
+                created_at TEXT DEFAULT (datetime('now')),
+                FOREIGN KEY (user_id) REFERENCES users (user_id) ON DELETE CASCADE
+            );
+            """)
+
             # Performance Indexes
             conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_user_active ON sessions (user_id, is_active);")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_session_messages_session ON session_messages (session_id);")
             conn.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users (username);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_user_tasks_user_id ON user_tasks (user_id, created_at DESC);")
 
             # Seed default system settings if not already present
             default_settings = {

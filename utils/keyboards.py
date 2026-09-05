@@ -7,13 +7,14 @@ from typing import Dict, List, Optional
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardMarkup, KeyboardButton
 import config
 
-def get_main_keyboard(is_admin: bool = False) -> ReplyKeyboardMarkup:
+def get_main_keyboard(is_admin: bool = False, has_custom_key: bool = False) -> ReplyKeyboardMarkup:
     """Generates the main persistent reply keyboard for quick access."""
     buttons = [
         [KeyboardButton("⚡ تبديل النموذج"), KeyboardButton("💬 جلسة جديدة")],
-        [KeyboardButton("📁 مستودعات GitHub"), KeyboardButton("📋 مهامي البرمجية")],
-        [KeyboardButton("🔑 مفتاح API"), KeyboardButton("ℹ️ المساعدة والمعلومات")]
+        [KeyboardButton("📋 مهامي السابقة"), KeyboardButton("🔑 مفتاح API")]
     ]
+    if is_admin or has_custom_key:
+        buttons.insert(1, [KeyboardButton("📁 المستودعات البرمجية")])
     if is_admin:
         buttons.append([KeyboardButton("🛠️ لوحة تحكم الأدمن (/admin)")])
 
@@ -23,7 +24,7 @@ def get_main_keyboard(is_admin: bool = False) -> ReplyKeyboardMarkup:
 def get_model_switch_keyboard(current_model: str) -> InlineKeyboardMarkup:
     """
     Inline keyboard for selecting exact canonical Google models:
-    - Jules API models: gemini-3.7-flash, gemini-3.1-pro
+    - Jules API models: gemini-3.6-flash, gemini-3.1-pro
     - Google AI Studio models: gemini-3.1-pro, gemini-3.1-flash, gemini-3.5-flash,
       gemini-3.6-flash, gemini-3.7-flash, gemini-3.8-flash
     """
@@ -33,9 +34,9 @@ def get_model_switch_keyboard(current_model: str) -> InlineKeyboardMarkup:
         return f"✅ {full_id}" if m == full_id else full_id
 
     keyboard = [
-        # Jules Official Models (Exactly gemini-3.6-flash and gemini-3.1-pro)
+        # Autonomous Agent Models (gemini-3.6-flash and gemini-3.1-pro)
         [
-            InlineKeyboardButton(text="── 🛠️ نماذج Jules API الرسمية ──", callback_data="user:noop")
+            InlineKeyboardButton(text="── 🛠️ نماذج محرك الوكيل المتقدم ──", callback_data="user:noop")
         ],
         [
             InlineKeyboardButton(
@@ -84,7 +85,7 @@ def get_model_switch_keyboard(current_model: str) -> InlineKeyboardMarkup:
         # Repo Agent Mode
         [
             InlineKeyboardButton(
-                text=f"{'✅ ' if m == 'agent' else ''}🛠️ وكيل المستودعات (Jules Agent)",
+                text=f"{'✅ ' if m == 'agent' else ''}🛠️ وكيل هندسة البرمجيات المستقل",
                 callback_data="user:set_model:agent"
             )
         ],
@@ -103,7 +104,7 @@ def get_apikey_dashboard_keyboard(has_gemini: bool, has_jules: bool, is_admin: b
     keyboard = [
         [
             InlineKeyboardButton(f"⚡ مفتاح Studio ({gemini_status})", callback_data="user:set_key_prompt:gemini"),
-            InlineKeyboardButton(f"🛠️ مفتاح Jules ({jules_status})", callback_data="user:set_key_prompt:jules"),
+            InlineKeyboardButton(f"🛠️ مفتاح الوكيل ({jules_status})", callback_data="user:set_key_prompt:jules"),
         ],
         [
             InlineKeyboardButton("🎯 تحديد النموذج / الوكيل النشط", callback_data="user:open_model_menu"),
