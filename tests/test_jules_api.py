@@ -95,26 +95,24 @@ class TestJulesApiClient(unittest.TestCase):
         # Regular user (no custom key, not admin)
         kb_reg = get_main_keyboard(is_admin=False, has_custom_key=False)
         reg_buttons = [btn.text for row in kb_reg.keyboard for btn in row]
-        # Should NOT have help button or repo button or admin button
+        # Should NOT have help button, repo button, admin button, model button, or apikey button
         self.assertNotIn("ℹ️ المساعدة والمعلومات", reg_buttons)
         self.assertNotIn("📁 المستودعات البرمجية", reg_buttons)
         self.assertNotIn("🛠️ لوحة تحكم الأدمن (/admin)", reg_buttons)
-        # Should have previous tasks
+        self.assertNotIn("⚡ تبديل النموذج", reg_buttons)
+        self.assertNotIn("🔑 مفتاح API", reg_buttons)
+        # Should only have new session and previous tasks
         self.assertIn("📋 مهامي السابقة", reg_buttons)
-        self.assertIn("⚡ تبديل النموذج", reg_buttons)
+        self.assertIn("💬 جلسة جديدة", reg_buttons)
 
         # Admin user
         kb_admin = get_main_keyboard(is_admin=True, has_custom_key=False)
         admin_buttons = [btn.text for row in kb_admin.keyboard for btn in row]
         self.assertIn("📁 المستودعات البرمجية", admin_buttons)
         self.assertIn("🛠️ لوحة تحكم الأدمن (/admin)", admin_buttons)
+        self.assertIn("⚡ تبديل النموذج", admin_buttons)
+        self.assertIn("🔑 مفتاح API", admin_buttons)
         self.assertNotIn("ℹ️ المساعدة والمعلومات", admin_buttons)
-
-        # User with custom key
-        kb_custom = get_main_keyboard(is_admin=False, has_custom_key=True)
-        custom_buttons = [btn.text for row in kb_custom.keyboard for btn in row]
-        self.assertIn("📁 المستودعات البرمجية", custom_buttons)
-        self.assertNotIn("🛠️ لوحة تحكم الأدمن (/admin)", custom_buttons)
 
     def test_apikey_dashboard_keyboard_whitelabel(self):
         kb = get_apikey_dashboard_keyboard(has_gemini=True, has_jules=False, is_admin=False)

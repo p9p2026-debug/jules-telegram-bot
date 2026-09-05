@@ -69,6 +69,30 @@ class TestPermissions(unittest.IsolatedAsyncioTestCase):
         allowed, _ = await PermissionService.check_access(100, "send_images")
         self.assertTrue(allowed)
 
+    async def test_admin_model_and_key_controls(self):
+        # Admin can update model for all users
+        await UserRepository.update_all_models("gemini-3.1-pro")
+        u1 = await UserRepository.get_by_id(100)
+        u2 = await UserRepository.get_by_id(200)
+        self.assertEqual(u1["selected_model"], "gemini-3.1-pro")
+        self.assertEqual(u2["selected_model"], "gemini-3.1-pro")
+
+        # Admin can update model for a specific user
+        await UserRepository.update_model(100, "gemini-3.7-flash")
+        u1_updated = await UserRepository.get_by_id(100)
+        u2_same = await UserRepository.get_by_id(200)
+        self.assertEqual(u1_updated["selected_model"], "gemini-3.7-flash")
+        self.assertEqual(u2_same["selected_model"], "gemini-3.1-pro")
+
+        # Admin can assign custom key to user
+        await UserRepository.update_custom_api_key(100, "AIzaSyCustomKeyForUser")
+        u1_key = await UserRepository.get_by_id(100)
+        self.assertEqual(u1_key["custom_api_key"], "AIzaSyCustomKeyForUser")
+
+        # Verify admin identification
+        self.assertTrue(PermissionService.is_admin(99999))
+        self.assertFalse(PermissionService.is_admin(100))
+
     async def asyncTearDown(self):
         try:
             if os.path.exists(temp_db_path):

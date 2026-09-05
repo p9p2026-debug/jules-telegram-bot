@@ -9,14 +9,16 @@ import config
 
 def get_main_keyboard(is_admin: bool = False, has_custom_key: bool = False) -> ReplyKeyboardMarkup:
     """Generates the main persistent reply keyboard for quick access."""
-    buttons = [
-        [KeyboardButton("⚡ تبديل النموذج"), KeyboardButton("💬 جلسة جديدة")],
-        [KeyboardButton("📋 مهامي السابقة"), KeyboardButton("🔑 مفتاح API")]
-    ]
-    if is_admin or has_custom_key:
-        buttons.insert(1, [KeyboardButton("📁 المستودعات البرمجية")])
     if is_admin:
-        buttons.append([KeyboardButton("🛠️ لوحة تحكم الأدمن (/admin)")])
+        buttons = [
+            [KeyboardButton("💬 جلسة جديدة"), KeyboardButton("📋 مهامي السابقة")],
+            [KeyboardButton("⚡ تبديل النموذج"), KeyboardButton("🔑 مفتاح API")],
+            [KeyboardButton("📁 المستودعات البرمجية"), KeyboardButton("🛠️ لوحة تحكم الأدمن (/admin)")]
+        ]
+    else:
+        buttons = [
+            [KeyboardButton("💬 جلسة جديدة"), KeyboardButton("📋 مهامي السابقة")]
+        ]
 
     return ReplyKeyboardMarkup(buttons, resize_keyboard=True)
 
@@ -221,13 +223,19 @@ def get_admin_main_keyboard(maintenance_on: bool, whitelist_on: bool) -> InlineK
         ],
         [
             InlineKeyboardButton(
+                text="🎯 تحديد النموذج العام للنظام",
+                callback_data="admin:sys_model_menu"
+            )
+        ],
+        [
+            InlineKeyboardButton(
                 text="⚙️ التحكم في الميزات العامة",
                 callback_data="admin:features_menu"
             )
         ],
         [
             InlineKeyboardButton(
-                text="👥 إدارة المستخدمين والصلاحيات",
+                text="👥 إدارة المستخدمين والصلاحيات والمفاتيح",
                 callback_data="admin:users_menu"
             )
         ],
@@ -300,7 +308,8 @@ def get_admin_users_menu_keyboard(users: List[dict] = None) -> InlineKeyboardMar
 def get_admin_user_manage_keyboard(
     user_id: int,
     is_banned: bool,
-    is_whitelisted: bool
+    is_whitelisted: bool,
+    has_custom_key: bool = False
 ) -> InlineKeyboardMarkup:
     """Controls for a single specific user."""
     ban_text = "🔓 إلغاء الحظر" if is_banned else "🚫 حظر المستخدم"
@@ -313,7 +322,23 @@ def get_admin_user_manage_keyboard(
         ],
         [
             InlineKeyboardButton(
-                text="🎯 تخصيص الصلاحيات الفردية (Granular)",
+                text="🎯 تخصيص النموذج لهذا المستخدم",
+                callback_data=f"admin:user_model_menu:{user_id}"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="🔑 تعيين مفتاح API له",
+                callback_data=f"admin:set_user_key:{user_id}"
+            ),
+            InlineKeyboardButton(
+                text="🗑️ مسح مفتاحه",
+                callback_data=f"admin:clear_user_key:{user_id}"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="⚙️ تخصيص الصلاحيات الفردية (Granular)",
                 callback_data=f"admin:user_perms:{user_id}"
             )
         ],
@@ -321,6 +346,34 @@ def get_admin_user_manage_keyboard(
             InlineKeyboardButton(text="🔙 قائمة المستخدمين", callback_data="admin:users_menu")
         ]
     ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+def get_admin_select_model_keyboard(target: str, current_model: str = "") -> InlineKeyboardMarkup:
+    """Inline keyboard for admin to select model for system or a specific user."""
+    models = [
+        ("gemini-3.6-flash", "⚡ gemini-3.6-flash"),
+        ("gemini-3.1-pro", "💎 gemini-3.1-pro"),
+        ("gemini-3.1-flash", "⚡ gemini-3.1-flash"),
+        ("gemini-3.5-flash", "⚡ gemini-3.5-flash"),
+        ("gemini-3.7-flash", "⚡ gemini-3.7-flash"),
+        ("gemini-3.8-flash", "⚡ gemini-3.8-flash"),
+        ("agent", "🛠️ وكيل هندسة البرمجيات المستقل")
+    ]
+    keyboard = []
+    for model_id, label in models:
+        prefix = "✅ " if current_model == model_id else ""
+        if target == "system":
+            cb = f"admin:set_sys_model:{model_id}"
+        else:
+            cb = f"admin:set_user_model:{target}:{model_id}"
+        keyboard.append([InlineKeyboardButton(text=f"{prefix}{label}", callback_data=cb)])
+
+    if target == "system":
+        keyboard.append([InlineKeyboardButton(text="🔙 العودة للوحة الرئيسية", callback_data="admin:main_menu")])
+    else:
+        keyboard.append([InlineKeyboardButton(text="🔙 العودة لبيانات المستخدم", callback_data=f"admin:view_user:{target}")])
+
     return InlineKeyboardMarkup(keyboard)
 
 

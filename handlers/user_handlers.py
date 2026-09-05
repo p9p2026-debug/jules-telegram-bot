@@ -89,6 +89,10 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
 async def model_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handles /model command: presents model selection inline keyboard or sets model directly."""
     user_id = update.effective_user.id
+    if not PermissionService.is_admin(user_id):
+        await update.message.reply_text("⛔ اختيار وتعيين النماذج يدار مركزياً من قِبل إدارة النظام.")
+        return
+
     allowed, reason = await PermissionService.check_access(user_id, config.FEATURE_SWITCH_MODEL)
     if not allowed:
         await update.message.reply_text(reason)
@@ -200,6 +204,10 @@ async def sessions_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 async def apikey_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handles /apikey command: manages personal Google Studio & Jules API keys with full interactive UI."""
     user_id = update.effective_user.id
+    if not PermissionService.is_admin(user_id):
+        await update.message.reply_text("⛔ إدارة المفاتيح تدار مركزياً من قِبل إدارة النظام.")
+        return
+
     allowed, reason = await PermissionService.check_access(user_id, config.FEATURE_CUSTOM_KEYS)
     if not allowed:
         await update.message.reply_text(reason)
@@ -684,9 +692,16 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         ai_prompt = clean_regex.sub("", ai_prompt).strip() or text
 
     # Reply Keyboard button shortcuts
-    if text == "⚡ تبديل النموذج":
-        await model_command(update, context)
-        return
+    if text in ["⚡ تبديل النموذج", "🔑 مفتاح API"]:
+        if not PermissionService.is_admin(user.id):
+            await update.message.reply_text("⛔ هذه الإعدادات تدار بالكامل من قِبل إدارة النظام.")
+            return
+        if text == "⚡ تبديل النموذج":
+            await model_command(update, context)
+            return
+        elif text == "🔑 مفتاح API":
+            await apikey_command(update, context)
+            return
     elif text == "💬 جلسة جديدة":
         await new_session_command(update, context)
         return
@@ -699,9 +714,6 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     elif text == "📂 جلساتي":
         await sessions_command(update, context)
         return
-    elif text == "🔑 مفتاح API":
-        await apikey_command(update, context)
-        return
     elif text == "ℹ️ المساعدة والمعلومات":
         await help_command(update, context)
         return
@@ -709,6 +721,29 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
         from handlers.admin_handlers import admin_command
         await admin_command(update, context)
         return
+
+    # Check if admin is setting an API key for a specific user
+    if context.user_data.get("admin_setting_key_for"):
+        target_id = context.user_data.pop("admin_setting_key_for")
+        if PermissionService.is_admin(user.id):
+            key_val = text.strip()
+            if len(key_val) < 15:
+                await update.message.reply_text("❌ يبدو أن المفتاح المدخل غير صالح (قصير جداً).")
+                return
+            if key_val.startswith("AQ."):
+                await SettingsRepository.set_setting(f"user_jules_key:{target_id}", key_val)
+                await UserRepository.update_custom_api_key(target_id, key_val)
+                await UserRepository.update_model(target_id, config.MODEL_CHOICE_AGENT)
+                t_label = "محرك الوكيل البرمجي"
+            else:
+                await SettingsRepository.set_setting(f"user_gemini_key:{target_id}", key_val)
+                await UserRepository.update_custom_api_key(target_id, key_val)
+                t_label = "Google AI Studio"
+            await update.message.reply_text(
+                f"✅ <b>تم حفظ وتعيين المفتاح للمستخدم (ID: <code>{target_id}</code>) بنجاح ({t_label})!</b>",
+                parse_mode=ParseMode.HTML
+            )
+            return
 
     # Check if user is actively entering an API key via interactive button prompt
     if "awaiting_api_key" in context.user_data:
@@ -792,7 +827,8 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
     # Update user record
     user_db = await UserRepository.get_or_create(user.id, user.username, user.first_name)
-    selected_model = user_db.get("selected_model", config.MODEL_CHOICE_FLASH)
+    sys_model = await SettingsRepository.get_setting("system_model", config.MODEL_CHOICE_FLASH)
+    selected_model = user_db.get("selected_model") or sys_model
 
     # Check effective API key to route Jules tasks seamlessly
     effective_api_key = await JulesService.get_effective_api_key(user.id, key_type="any")
@@ -1063,7 +1099,8 @@ async def document_message_handler(update: Update, context: ContextTypes.DEFAULT
         mime_type = "application/pdf"
 
     user_db = await UserRepository.get_or_create(user.id, user.username, user.first_name)
-    selected_model = user_db.get("selected_model", config.MODEL_CHOICE_FLASH)
+    sys_model = await SettingsRepository.get_setting("system_model", config.MODEL_CHOICE_FLASH)
+    selected_model = user_db.get("selected_model") or sys_model
 
     effective_api_key = await JulesService.get_effective_api_key(user.id, key_type="any")
     is_jules_engine = (
@@ -1170,6 +1207,14 @@ async def user_callback_handler(update: Update, context: ContextTypes.DEFAULT_TY
     elif data == "user:noop":
         await query.answer()
         return
+
+    # Restrict model selection and key configuration callbacks to admin only
+    if data.startswith("user:set_model:") or data.startswith("user:set_key_prompt:") or data in [
+        "user:open_model_menu", "user:custom_model_prompt", "user:clear_keys"
+    ]:
+        if not PermissionService.is_admin(user_id):
+            await query.answer("⛔ اختيار النماذج وإدارة المفاتيح تدار من قِبل إدارة النظام فقط.", show_alert=True)
+            return
 
     elif data.startswith("user:set_model:"):
         model_target = data.split(":")[2]

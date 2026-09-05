@@ -26,7 +26,8 @@ from utils.keyboards import (
     get_admin_main_keyboard,
     get_admin_user_manage_keyboard,
     get_admin_users_menu_keyboard,
-    get_user_permissions_keyboard
+    get_user_permissions_keyboard,
+    get_admin_select_model_keyboard
 )
 
 logger = logging.getLogger(__name__)
@@ -38,6 +39,7 @@ async def render_admin_dashboard_text() -> str:
     user_count = await UserRepository.count_users()
     session_count = await SessionRepository.count_sessions()
     msg_count = await SessionRepository.count_messages()
+    sys_model = await SettingsRepository.get_setting("system_model", "gemini-3.6-flash")
 
     m_status = "🔴 مفعل (البوت مغلق للعامة)" if maintenance else "🟢 معطل (البوت متاح للجميع)"
     w_status = "🔒 مفعل (للمصرح لهم فقط)" if whitelist else "🌐 معطل (الوصول عام)"
@@ -45,6 +47,7 @@ async def render_admin_dashboard_text() -> str:
     text = (
         "👑 <b>لوحة تحكم إدارة النظام والمساعد الذكي</b>\n"
         "━━━━━━━━━━━━━━━━━━━━━\n"
+        f"🎯 <b>النموذج العام لجميع الناس:</b> <code>{sys_model}</code>\n"
         f"🚦 <b>وضع الصيانة:</b> {m_status}\n"
         f"🛡️ <b>وضع القائمة البيضاء:</b> {w_status}\n\n"
         "📊 <b>إحصائيات النظام السريعة:</b>\n"
@@ -135,7 +138,7 @@ async def show_user_management(chat_id: int, target_user: dict, context: Context
         "━━━━━━━━━━━━━━━━━━━━━"
     )
 
-    markup = get_admin_user_manage_keyboard(t_id, is_banned, is_whitelisted)
+    markup = get_admin_user_manage_keyboard(t_id, is_banned, is_whitelisted, has_custom_key=bool(target_user.get("custom_api_key")))
 
     if message_id:
         try:
@@ -248,6 +251,83 @@ async def admin_callback_handler(update: Update, context: ContextTypes.DEFAULT_T
             parse_mode=ParseMode.HTML,
             reply_markup=get_admin_users_menu_keyboard(users)
         )
+
+    elif data == "admin:sys_model_menu":
+        sys_model = await SettingsRepository.get_setting("system_model", "gemini-3.6-flash")
+        text = (
+            "🎯 <b>تحديد النموذج العام لجميع المستخدمين:</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            f"• النموذج الحالي المعتمد: <code>{sys_model}</code>\n\n"
+            "اختر النموذج الذي ترغب في اعتماده كافتراضي لكافة الناس:"
+        )
+        await query.edit_message_text(
+            text=text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=get_admin_select_model_keyboard("system", sys_model)
+        )
+
+    elif data.startswith("admin:set_sys_model:"):
+        model_id = data.replace("admin:set_sys_model:", "")
+        await SettingsRepository.set_setting("system_model", model_id)
+        await UserRepository.update_all_models(model_id)
+        await query.answer(f"✅ تم اعتماد نموذج {model_id} للنظام!", show_alert=True)
+        text = await render_admin_dashboard_text()
+        maintenance = await SettingsRepository.is_maintenance_mode()
+        whitelist = await SettingsRepository.is_whitelist_mode()
+        await query.edit_message_text(
+            text=text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=get_admin_main_keyboard(maintenance, whitelist)
+        )
+
+    elif data.startswith("admin:user_model_menu:"):
+        target_id = int(data.split(":")[2])
+        target_user = await UserRepository.get_by_id(target_id)
+        current_user_model = target_user.get("selected_model", "") if target_user else ""
+        text = (
+            f"🎯 <b>تخصيص النموذج للمستخدم (ID: <code>{target_id}</code>):</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            f"• النموذج الحالي: <code>{current_user_model or 'يتبع النظام'}</code>\n\n"
+            "اختر النموذج المناسب له:"
+        )
+        await query.edit_message_text(
+            text=text,
+            parse_mode=ParseMode.HTML,
+            reply_markup=get_admin_select_model_keyboard(str(target_id), current_user_model)
+        )
+
+    elif data.startswith("admin:set_user_model:"):
+        parts = data.split(":")
+        target_id = int(parts[2])
+        model_id = parts[3]
+        await UserRepository.update_model(target_id, model_id)
+        await query.answer(f"✅ تم تعيين نموذج {model_id} للمستخدم!", show_alert=True)
+        target_user = await UserRepository.get_by_id(target_id)
+        if target_user:
+            await show_user_management(query.message.chat_id, target_user, context, query.message.message_id)
+
+    elif data.startswith("admin:set_user_key:"):
+        target_id = int(data.split(":")[2])
+        context.user_data["admin_setting_key_for"] = target_id
+        await query.message.reply_text(
+            f"🔑 <b>تعيين مفتاح API خاص للمستخدم (ID: <code>{target_id}</code>):</b>\n"
+            "━━━━━━━━━━━━━━━━━━━━━\n"
+            "أرسل الآن مفتاح API في الشات مباشرة:\n"
+            "• مفتاح Studio (يبدأ بـ <code>AIzaSy...</code>)\n"
+            "• مفتاح محرك الوكيل البرمجي (يبدأ بـ <code>AQ....</code>)\n\n"
+            "سيقوم البوت بحفظه وتشفيره وربطه بحساب هذا المستخدم فقط.",
+            parse_mode=ParseMode.HTML
+        )
+
+    elif data.startswith("admin:clear_user_key:"):
+        target_id = int(data.split(":")[2])
+        await UserRepository.update_custom_api_key(target_id, None)
+        await SettingsRepository.set_setting(f"user_gemini_key:{target_id}", "")
+        await SettingsRepository.set_setting(f"user_jules_key:{target_id}", "")
+        await query.answer("🗑️ تم حذف المفتاح المخصص للمستخدم والعودة للافتراضي العام!", show_alert=True)
+        target_user = await UserRepository.get_by_id(target_id)
+        if target_user:
+            await show_user_management(query.message.chat_id, target_user, context, query.message.message_id)
 
     elif data == "admin:prompt_search_user":
         await query.edit_message_text(

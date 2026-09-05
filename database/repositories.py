@@ -18,12 +18,14 @@ class UserRepository:
         is_admin = 1 if user_id in config.ADMIN_IDS else 0
 
         if not user:
+            sys_model = await fetchone("SELECT value FROM system_settings WHERE key = 'system_model'")
+            initial_model = sys_model["value"] if sys_model and sys_model["value"] else "gemini-3.6-flash"
             await execute(
                 """
-                INSERT INTO users (user_id, username, first_name, is_admin, last_active)
-                VALUES (?, ?, ?, ?, datetime('now'))
+                INSERT INTO users (user_id, username, first_name, is_admin, selected_model, last_active)
+                VALUES (?, ?, ?, ?, ?, datetime('now'))
                 """,
-                (user_id, username, first_name, is_admin)
+                (user_id, username, first_name, is_admin, initial_model)
             )
             user = await fetchone("SELECT * FROM users WHERE user_id = ?", (user_id,))
         else:
@@ -53,6 +55,11 @@ class UserRepository:
     async def update_model(user_id: int, model: str) -> None:
         """Updates user's preferred active model ('flash' or 'pro')."""
         await execute("UPDATE users SET selected_model = ? WHERE user_id = ?", (model, user_id))
+
+    @staticmethod
+    async def update_all_models(model: str) -> None:
+        """Updates active model for all users."""
+        await execute("UPDATE users SET selected_model = ?", (model,))
 
     @staticmethod
     async def update_custom_api_key(user_id: int, api_key: Optional[str]) -> None:

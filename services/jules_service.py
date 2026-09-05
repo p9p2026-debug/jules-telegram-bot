@@ -154,7 +154,10 @@ class JulesService:
 
         # Retrieve user model preference (for Gemini fallback)
         user = await UserRepository.get_by_id(user_id)
-        model_choice = user.get("selected_model", "flash") if user else "flash"
+        sys_model = await SettingsRepository.get_setting("system_model", "flash")
+        model_choice = user.get("selected_model") if user else sys_model
+        if not model_choice:
+            model_choice = sys_model or "flash"
         model_id = cls.resolve_model_id(model_choice)
 
         # Build conversation history
