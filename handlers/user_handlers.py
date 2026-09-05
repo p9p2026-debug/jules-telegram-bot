@@ -298,6 +298,12 @@ async def apikey_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> 
         return
 
     # Arguments provided: handle clear, explicit type, or auto-detect
+    if update.effective_chat.type != "private":
+        try:
+            await update.message.delete()
+        except Exception:
+            pass
+
     first_arg = context.args[0].strip()
 
     if first_arg.lower() == "clear":
@@ -392,6 +398,12 @@ async def github_token_command(update: Update, context: ContextTypes.DEFAULT_TYP
             parse_mode=ParseMode.HTML
         )
         return
+
+    if update.effective_chat.type != "private":
+        try:
+            await update.message.delete()
+        except Exception:
+            pass
 
     arg = context.args[0].strip()
     if arg.lower() == "clear":

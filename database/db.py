@@ -145,6 +145,11 @@ async def init_db() -> None:
             );
             """)
 
+            # Performance Indexes
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_sessions_user_active ON sessions (user_id, is_active);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_session_messages_session ON session_messages (session_id);")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_users_username ON users (username);")
+
             # Seed default system settings if not already present
             default_settings = {
                 "maintenance_mode": "false",

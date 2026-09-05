@@ -375,7 +375,8 @@ class TaskMonitorService:
                     def _download():
                         req = urllib.request.Request(fetch_url, headers={"User-Agent": "Mozilla/5.0"})
                         with urllib.request.urlopen(req, timeout=20) as resp:
-                            return resp.read(), resp.headers.get("Content-Type", "")
+                            max_bytes = 50 * 1024 * 1024  # 50 MB safety cap for Telegram Bot API limit
+                            return resp.read(max_bytes), resp.headers.get("Content-Type", "")
 
                     data, ctype = await asyncio.to_thread(_download)
                     if data and len(data) > 100:

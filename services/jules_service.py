@@ -105,10 +105,10 @@ class JulesService:
             "3.6": "gemini-3.6-flash",
             "3.7-flash": "gemini-3.7-flash",
             "3.7": "gemini-3.7-flash",
-            "flash": "gemini-3.7-flash",
+            "flash": "gemini-3.6-flash",
             "3.8-flash": "gemini-3.8-flash",
             "3.8": "gemini-3.8-flash",
-            "agent": "gemini-3.7-flash"
+            "agent": "gemini-3.6-flash"
         }
 
         if choice in alias_map:
@@ -240,8 +240,8 @@ class JulesService:
                     return (
                         "❌ **الخدمة غير مفعلة على مشروع مفتاح الـ API (403):**\n\n"
                         "المشروع المرتبط بالمفتاح يحتاج إلى تفعيل خدمة الـ Generative Language.\n"
-                        "• **الحل الأسرع:** اضغط على زر (Enable / تفعيل) من الرابط التالي:\n"
-                        "https://console.developers.google.com/apis/api/generativelanguage.googleapis.com/overview?project=306419110271\n\n"
+                        "• **الحل الأسرع:** اضغط على زر (Enable / تفعيل) لخدمة Generative Language API من الرابط التالي:\n"
+                        "https://console.developers.google.com/apis/api/generativelanguage.googleapis.com/overview\n\n"
                         "• أو استخرج مفتاحاً جاهزاً ومفعلاً مجاناً من [Google AI Studio](https://aistudio.google.com/app/apikey) وحدّثه عبر `/apikey`."
                     )
                 return "❌ **خطأ في الصلاحيات (403):** مفتاح الـ API لا يملك صلاحية استخدام هذا النموذج."
