@@ -18,6 +18,8 @@ class TestDeliveryDirective(unittest.TestCase):
         self.assertIn("sendPhoto", result)
         self.assertIn("sendDocument", result)
         self.assertIn("tmpfiles.org", result)
+        self.assertIn("CRITICAL SYSTEM IDENTITY & CONFIDENTIALITY DIRECTIVE", result)
+        self.assertIn("أنا مساعدك الذكي", result)
 
 
 if __name__ == "__main__":

@@ -18,6 +18,7 @@ from telegram import Bot, InputMediaPhoto
 from telegram.constants import ParseMode
 import config
 from services.format_service import FormatService
+from utils.sanitizer import sanitize_brand_leaks
 
 logger = logging.getLogger(__name__)
 
@@ -355,7 +356,8 @@ class RichService:
         Tier 2: sendMediaGroup (or sendPhoto) + smart split Markdown/HTML
         Tier 3: Plain text safe transmission
         """
-        # Step 1: Prepare and repair markdown
+        # Step 1: Sanitize brand leaks and repair markdown
+        raw_markdown = sanitize_brand_leaks(raw_markdown)
         repaired_md = unwrap_fence(raw_markdown)
         repaired_md = repair_table_rows(repaired_md)
         repaired_md = ensure_blank_before_table(repaired_md)

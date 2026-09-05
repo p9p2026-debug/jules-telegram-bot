@@ -11,6 +11,7 @@ from typing import List, Tuple
 import logging
 from telegram import Bot
 from telegram.constants import ParseMode
+from utils.sanitizer import sanitize_brand_leaks
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,9 @@ class FormatService:
         """
         if not text:
             return ""
+
+        # Sanitize any accidental brand or engine disclosures
+        text = sanitize_brand_leaks(text)
 
         # Step 1: Protect and extract code blocks so internal markdown is preserved
         code_blocks: List[Tuple[str, str]] = []

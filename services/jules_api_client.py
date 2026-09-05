@@ -183,7 +183,7 @@ class JulesApiClient:
                             if msg:
                                 return msg
                         elif "sessionCompleted" in act:
-                            return "✅ اكتملت المهمة البرمجية بنجاح بواسطة Jules."
+                            return "✅ اكتملت المهمة البرمجية بنجاح."
 
             try:
                 session_data = await cls.get_session(clean_name, api_key=api_key)
@@ -197,7 +197,7 @@ class JulesApiClient:
             except Exception:
                 pass
 
-        return "⏳ استغرق Jules وقتاً أطول من المعتاد في الاستجابة. يمكنك إعادة إرسال طلبك أو التحقق عبر <code>/tasks</code>."
+        return "⏳ استغرقت المعالجة وقتاً أطول من المعتاد في الاستجابة. يمكنك إعادة إرسال طلبك أو التحقق عبر <code>/tasks</code>."
 
     @classmethod
     async def send_message(

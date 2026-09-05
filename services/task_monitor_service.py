@@ -17,6 +17,7 @@ from telegram.constants import ParseMode
 from telegram.error import TelegramError
 from database.repositories import SettingsRepository
 from services.jules_api_client import JulesApiClient
+from utils.sanitizer import sanitize_brand_leaks
 
 logger = logging.getLogger(__name__)
 
@@ -85,7 +86,8 @@ class TaskMonitorService:
 
                     # Deliver live agent messages via RichService (Rich Markdown, RTL, and tables)
                     if act.get("originator") == "agent" and "agentMessaged" in act:
-                        msg = act["agentMessaged"].get("agentMessage")
+                        raw_agent_msg = act["agentMessaged"].get("agentMessage")
+                        msg = sanitize_brand_leaks(raw_agent_msg) if raw_agent_msg else None
                         if msg:
                             try:
                                 from services.rich_service import RichService
@@ -141,7 +143,7 @@ class TaskMonitorService:
                 latest_activity = "جاري تنفيذ الخطوات والتحليل..."
                 if activities:
                     last_act = activities[-1]
-                    latest_activity = (
+                    raw_activity = (
                         last_act.get("description")
                         or last_act.get("summary")
                         or last_act.get("title")
@@ -149,6 +151,7 @@ class TaskMonitorService:
                         or (last_act.get("progressUpdated", {}).get("description") if "progressUpdated" in last_act else None)
                         or latest_activity
                     )
+                    latest_activity = sanitize_brand_leaks(raw_activity)
 
                 # Check Plan Approval State
                 is_awaiting_plan = (
@@ -161,7 +164,8 @@ class TaskMonitorService:
                     for a in activities:
                         if "planGenerated" in a:
                             p = a["planGenerated"]
-                            plan_desc = p.get("plan") or p.get("description") or p.get("title") or ""
+                            raw_plan = p.get("plan") or p.get("description") or p.get("title") or ""
+                            plan_desc = sanitize_brand_leaks(raw_plan)
 
                     plan_text = (
                         "📋 <b>خطة العمل المقترحة:</b>\n"
@@ -423,7 +427,8 @@ class TaskMonitorService:
 
             if act.get("originator") == "agent":
                 if "agentMessaged" in act:
-                    msg = act["agentMessaged"].get("agentMessage")
+                    raw_msg = act["agentMessaged"].get("agentMessage")
+                    msg = sanitize_brand_leaks(raw_msg) if raw_msg else None
                     if msg:
                         try:
                             from services.rich_service import RichService

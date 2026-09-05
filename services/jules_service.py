@@ -11,6 +11,7 @@ from google.genai import types
 import config
 from database.repositories import SessionRepository, SettingsRepository, UserRepository
 from services.jules_api_client import JulesApiClient, JulesApiException
+from utils.sanitizer import sanitize_brand_leaks
 
 logger = logging.getLogger(__name__)
 
@@ -220,7 +221,8 @@ class JulesService:
                 config=generation_config
             )
 
-            assistant_reply = response.text or "لم يقدم النموذج رداً نصياً على هذا الطلب."
+            raw_reply = response.text or "لم يقدم النموذج رداً نصياً على هذا الطلب."
+            assistant_reply = sanitize_brand_leaks(raw_reply)
 
             # Save assistant reply to database
             await SessionRepository.add_message(

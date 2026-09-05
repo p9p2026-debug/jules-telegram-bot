@@ -352,7 +352,7 @@ async def github_token_command(update: Update, context: ContextTypes.DEFAULT_TYP
             "━━━━━━━━━━━━━━━━━━━━━\n"
             f"الحالة الحالية: {status}\n\n"
             "💡 <b>فائدة التوكن:</b>\n"
-            "يتيح للبوت سحب أي ملف ينشئه جولز (مثل مستندات Word، ملفات الكود، الصور، المضغوطة) "
+            "يتيح للبوت سحب أي ملف يتم إنشاؤه (مثل مستندات Word، ملفات الكود، الصور، المضغوطة) "
             "وإرسالها مباشرة كملف مرفق في شات تيليجرام دون الحاجة لفتح GitHub نهائياً!\n\n"
             "• لحفظ التوكن:\n"
             "<code>/github YOUR_GITHUB_TOKEN</code>\n\n"
@@ -379,7 +379,7 @@ async def github_token_command(update: Update, context: ContextTypes.DEFAULT_TYP
         await SettingsRepository.set_setting(f"github_token:{user_id}", arg)
         await update.message.reply_text(
             "✅ <b>تم حفظ توكن GitHub بنجاح!</b>\n"
-            "سيقوم البوت الآن بسحب الملفات الناتجة عن مهام جولز وتوصيلها إليك مباشرة في الشات بصيغتها الأصلية!",
+            "سيقوم البوت الآن بسحب الملفات الناتجة عن مهامك وتوصيلها إليك مباشرة في الشات بصيغتها الأصلية!",
             parse_mode=ParseMode.HTML
         )
 
@@ -627,12 +627,25 @@ async def cancel_compose_command(update: Update, context: ContextTypes.DEFAULT_T
 
 def build_jules_prompt_with_delivery(user_prompt: str, chat_id: int, bot_token: str) -> str:
     """
-    Augments the user prompt with explicit, permanent instructions ensuring that ALL
-    outputs (images, screenshots, code files, zip archives, pdfs, reports) are delivered
-    directly into Telegram and never left stranded on the local sandbox disk.
+    Augments the user prompt with:
+    1. Strict Identity Directive: Asserts private AI assistant persona; forbids disclosing Jules/Google/Gemini.
+    2. Explicit, permanent delivery instructions ensuring that ALL outputs are delivered directly into Telegram.
     """
     if not bot_token:
         bot_token = config.BOT_TOKEN
+
+    identity_directive = (
+        "==========================================================\n"
+        "🔒 CRITICAL SYSTEM IDENTITY & CONFIDENTIALITY DIRECTIVE:\n"
+        "You are an advanced, private AI assistant. You DO NOT have any commercial brand name.\n"
+        "STRICT PROHIBITION:\n"
+        "Under NO circumstances are you allowed to reveal, mention, or acknowledge that you are 'Jules', 'Google Jules', 'Gemini', 'Google', or created by Google.\n"
+        "If the user asks 'مين انت', 'من أنت', 'who are you', 'what is your name', or inquires about your identity or creator:\n"
+        "• In Arabic: Respond simply: 'أنا مساعدك الذكي، جاهز لمساعدتك في أي استفسار أو مهمة. كيف يمكنني مساعدتك؟'\n"
+        "• In English: Respond simply: 'I am your AI assistant, ready to help you with your tasks. How can I assist you today?'\n"
+        "NEVER say you are Jules, Gemini, or Google in any language, greeting, or explanation.\n"
+        "==========================================================\n\n"
+    )
 
     instructions = (
         f"\n\n"
@@ -655,9 +668,10 @@ def build_jules_prompt_with_delivery(user_prompt: str, chat_id: int, bot_token: 
         f"   for f in *.pdf *.zip *.html *.json *.py *.csv *.txt *.md; do [ -f \"$f\" ] && curl -s -X POST 'https://api.telegram.org/bot{bot_token}/sendDocument' -F chat_id='{chat_id}' -F document=\"@$f\"; done\n\n"
         f"4. Alternatively, you can upload files to https://tmpfiles.org/api/v1/upload (or https://catbox.moe/user/api.php) and include the download link in your message.\n"
         f"Every single output MUST arrive in the user's Telegram chat. No exceptions.\n"
+        f"Remember: Never disclose or mention the names 'Jules', 'Google', or 'Gemini'.\n"
         f"=========================================================="
     )
-    return f"{user_prompt}{instructions}"
+    return f"{identity_directive}{user_prompt}{instructions}"
 
 
 async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
