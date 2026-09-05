@@ -717,6 +717,30 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
     text = plain_text.strip()
     ai_prompt = markdown_text.strip() or text
 
+    # Group / Supergroup filter: only process if replied to bot, mentioned, or tapped a button
+    is_group = update.effective_chat.type in ["group", "supergroup"]
+    keyboard_shortcuts = {
+        "⚡ تبديل النموذج", "💬 جلسة جديدة", "📁 مستودعات GitHub", "📂 مستودعاتي",
+        "📋 مهامي البرمجية", "📋 المهام", "📂 جلساتي", "🔑 مفتاح API",
+        "ℹ️ المساعدة والمعلومات", "🛠️ لوحة تحكم الأدمن (/admin)"
+    }
+    bot_username = (context.bot.username or "").lower()
+    is_reply_to_bot = bool(
+        update.message.reply_to_message
+        and update.message.reply_to_message.from_user
+        and update.message.reply_to_message.from_user.id == context.bot.id
+    )
+    is_mentioned = bool(bot_username and f"@{bot_username}" in text.lower())
+
+    if is_group and not (is_reply_to_bot or is_mentioned or text in keyboard_shortcuts):
+        return
+
+    # Strip mention if present so prompt sent to AI is clean
+    if is_mentioned and bot_username:
+        clean_regex = re.compile(rf"@{bot_username}\b", re.IGNORECASE)
+        text = clean_regex.sub("", text).strip()
+        ai_prompt = clean_regex.sub("", ai_prompt).strip() or text
+
     # Reply Keyboard button shortcuts
     if text == "⚡ تبديل النموذج":
         await model_command(update, context)
@@ -976,7 +1000,18 @@ async def text_message_handler(update: Update, context: ContextTypes.DEFAULT_TYP
 
 async def photo_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handles incoming photos for visual and architectural analysis or compose mode."""
-    user = update.effective_user
+    # Group check: only process if replied to bot or captioned with bot username
+    is_group = update.effective_chat.type in ["group", "supergroup"]
+    bot_username = (context.bot.username or "").lower()
+    caption_text = (update.message.caption or "").strip()
+    is_reply_to_bot = bool(
+        update.message.reply_to_message
+        and update.message.reply_to_message.from_user
+        and update.message.reply_to_message.from_user.id == context.bot.id
+    )
+    is_mentioned = bool(bot_username and f"@{bot_username}" in caption_text.lower())
+    if is_group and not (is_reply_to_bot or is_mentioned):
+        return
 
     # If in compose mode, store photo as piece
     if ComposeStore.is_composing(user.id):
@@ -1043,7 +1078,18 @@ async def photo_message_handler(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def document_message_handler(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handles incoming code documents, markdown, and PDF files."""
-    user = update.effective_user
+    # Group check: only process if replied to bot or captioned with bot username
+    is_group = update.effective_chat.type in ["group", "supergroup"]
+    bot_username = (context.bot.username or "").lower()
+    caption_text = (update.message.caption or "").strip()
+    is_reply_to_bot = bool(
+        update.message.reply_to_message
+        and update.message.reply_to_message.from_user
+        and update.message.reply_to_message.from_user.id == context.bot.id
+    )
+    is_mentioned = bool(bot_username and f"@{bot_username}" in caption_text.lower())
+    if is_group and not (is_reply_to_bot or is_mentioned):
+        return
 
     doc = update.message.document
     file_name = doc.file_name or "document"
