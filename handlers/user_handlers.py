@@ -52,11 +52,7 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     is_admin = PermissionService.is_admin(user.id)
     has_custom_key = bool(user_db.get("custom_api_key"))
 
-    welcome_text = (
-        f"أهلاً بك يا <b>{html.escape(user.first_name or 'صديقي')}</b>! 👋\n\n"
-        "أنا مساعدك الذكي لتطوير البرمجيات وهندسة الأنظمة.\n"
-        "أرسل استفسارك، كودك، أو ملفك وسأبدأ بالعمل فوراً."
-    )
+    welcome_text = "أهلاً بك 👋"
 
     await update.message.reply_text(
         text=welcome_text,
@@ -74,14 +70,7 @@ async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         return
 
     is_admin = PermissionService.is_admin(user_id)
-
     if not is_admin:
-        await update.message.reply_text(
-            "ℹ️ <b>المساعد الذكي:</b>\n\n"
-            "• أرسل استفسارك أو كودك أو ملفك في الشات وسأبدأ بالعمل عليه فوراً.\n"
-            "• لبدء موضوع جديد: اضغط على زر <b>💬 جلسة جديدة</b> في اللوحة أدناه.",
-            parse_mode=ParseMode.HTML
-        )
         return
 
     admin_help_text = (

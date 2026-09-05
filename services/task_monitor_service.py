@@ -92,7 +92,7 @@ class TaskMonitorService:
                                 await RichService.deliver_rich(
                                     bot=bot,
                                     chat_id=chat_id,
-                                    raw_markdown=f"💬 **المساعد الذكي:**\n\n{msg}"
+                                    raw_markdown=msg
                                 )
                                 if act_id:
                                     delivered_activity_ids.add(act_id)
@@ -430,7 +430,7 @@ class TaskMonitorService:
                             await RichService.deliver_rich(
                                 bot=bot,
                                 chat_id=chat_id,
-                                raw_markdown=f"💬 **تقرير الإنجاز:**\n\n{msg}"
+                                raw_markdown=msg
                             )
                             if act_id:
                                 delivered_ids.add(act_id)
